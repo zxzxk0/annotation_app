@@ -1,0 +1,36 @@
+[
+  {
+    "id": "PreSCCT1_HE.ome",
+    "dzi_url": "/annotation_app/data/tiles/PreSCCT1_HE.ome/PreSCCT1_HE.ome.dzi",
+    "cosmx": {
+      "has_cosmx": true,
+      "dzi_url": "/annotation_app/data/cosmx_tiles/PreSCCT1_HE.ome/PreSCCT1_HE.ome.dzi",
+      "registered": true,
+      "transform": {
+        "rotation": 0,
+        "flipX": false,
+        "flipY": false,
+        "translateX": -0.021645021645021644,
+        "translateY": 0.0078125,
+        "translateX_pixels": -10,
+        "translateY_pixels": 8,
+        "scale": 0.9820150000000003
+      },
+      "original_sizes": {
+        "he": [
+          37482,
+          82972
+        ],
+        "cosmx": [
+          37482,
+          82972
+        ]
+      }
+    },
+    "gene_expression": {
+      "polygons_url": "./data/gene_expression/PreSCCT1_HE.ome/cell_polygons.json",
+      "expression_url": "./data/gene_expression/PreSCCT1_HE.ome/gene_expression.json",
+      "coordinate_space": "he_level0_px"
+    }
+  }
+]

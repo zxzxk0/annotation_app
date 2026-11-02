@@ -149,6 +149,9 @@ let TH_BINS = [];
 
 // Gene-expression overlay state (static GitHub Pages demo)
 const GE = {
+  staticTypePaths: null,
+  staticPathRasterW: 0,
+  staticPathRasterH: 0,
   mode: 'cell-type',
   slideId: null,
   polygons: null,
@@ -4056,10 +4059,7 @@ function buildGeneStaticOverlay() {
     return null;
   }
   if (!S.heOriginalW || !S.heOriginalH) {
-    console.warn('[Gene Expression] static overlay skipped: H&E dimensions missing', {
-      heOriginalW: S.heOriginalW,
-      heOriginalH: S.heOriginalH
-    });
+    console.warn('[Gene Expression] static overlay skipped: H&E dimensions missing');
     return null;
   }
 
@@ -4073,65 +4073,100 @@ function buildGeneStaticOverlay() {
     GE.staticOverlayCanvas = canvas;
   }
 
-  if (canvas.width !== rasterW) canvas.width = rasterW;
-  if (canvas.height !== rasterH) canvas.height = rasterH;
+  canvas.width = rasterW;
+  canvas.height = rasterH;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, rasterW, rasterH);
-  ctx.globalAlpha = Math.max(0, Math.min(1, GE.opacity ?? 1));
 
-  const colors = _geneTypeColors();
   const sx = rasterW / S.heOriginalW;
   const sy = rasterH / S.heOriginalH;
 
-  for (const cell of (GE.polygons.cells || [])) {
-    const typeIdx = cell[1];
+  if (!GE.staticTypePaths ||
+      GE.staticPathRasterW !== rasterW ||
+      GE.staticPathRasterH !== rasterH) {
+
+    const nTypes = (GE.polygons.types || []).length;
+    GE.staticTypePaths = Array.from({ length: nTypes }, () => new Path2D());
+
+    let validCells = 0;
+    let badCells = 0;
+
+    for (const cell of (GE.polygons.cells || [])) {
+      const typeIdx = Number(cell[1]);
+      const coords = cell[2];
+
+      if (!Number.isInteger(typeIdx) ||
+          typeIdx < 0 ||
+          typeIdx >= nTypes ||
+          !Array.isArray(coords) ||
+          coords.length < 6) {
+        badCells++;
+        continue;
+      }
+
+      const p = GE.staticTypePaths[typeIdx];
+      let started = false;
+
+      for (let k = 0; k + 1 < coords.length; k += 2) {
+        const hx = Number(coords[k]);
+        const hy = Number(coords[k + 1]);
+        if (!Number.isFinite(hx) || !Number.isFinite(hy)) continue;
+
+        const px = hx * sx;
+        const py = hy * sy;
+
+        if (!started) {
+          p.moveTo(px, py);
+          started = true;
+        } else {
+          p.lineTo(px, py);
+        }
+      }
+
+      if (started) {
+        p.closePath();
+        validCells++;
+      } else {
+        badCells++;
+      }
+    }
+
+    GE.staticPathRasterW = rasterW;
+    GE.staticPathRasterH = rasterH;
+
+    console.log('[Gene Expression] geometry cache:', {
+      validCells,
+      badCells,
+      totalCells: GE.polygons?.cells?.length || 0,
+      types: nTypes
+    });
+  }
+
+  const colors = _geneTypeColors();
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, GE.opacity ?? 1));
+
+  for (let typeIdx = 0; typeIdx < GE.staticTypePaths.length; typeIdx++) {
     const exprTypeIdx = GE.polyTypeToExprType?.[typeIdx] ?? typeIdx;
     if (exprTypeIdx < 0) continue;
 
     const fill = colors[exprTypeIdx];
-    if (!fill || fill === 'rgba(255,255,255,0)') continue;
+    if (!fill) continue;
 
-    const coords = cell[2];
-    if (!coords || coords.length < 6) continue;
-
-    ctx.beginPath();
-    for (let k = 0; k < coords.length; k += 2) {
-      const hx = coords[k] + (GE.offsetX || 0);
-      const hy = coords[k + 1] + (GE.offsetY || 0);
-      const px = hx * sx;
-      const py = hy * sy;
-
-      if (k === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-
-    if (GE.debugFill !== false) {
-      ctx.fillStyle = fill;
-      ctx.fill();
-    }
-
-    if (GE.debugOutline) {
-      ctx.strokeStyle = 'rgba(20,20,20,0.55)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
+    ctx.fillStyle = fill;
+    ctx.fill(GE.staticTypePaths[typeIdx], 'nonzero');
   }
 
-  ctx.globalAlpha = 1;
+  ctx.restore();
 
-  if (!GE._loggedStaticOverlayBuilt) {
-    console.log('[Gene Expression] static overlay built:', {
-      rasterW,
-      rasterH,
-      cells: GE.polygons?.cells?.length || 0,
-      gene: GE.selectedGene,
-      heOriginalW: S.heOriginalW,
-      heOriginalH: S.heOriginalH
-    });
-    GE._loggedStaticOverlayBuilt = true;
-  }
+  console.log('[Gene Expression] static overlay rendered:', {
+    cells: GE.polygons?.cells?.length || 0,
+    gene: GE.selectedGene,
+    rasterW,
+    rasterH
+  });
 
   return canvas;
 }
@@ -4150,9 +4185,6 @@ function installGeneStaticOverlayIntoOSD() {
 
   canvas.style.pointerEvents = 'none';
 
-  // Gene polygons are already in H&E level-0 coordinates.
-  // The right viewer is fit to the H&E reference frame after CosMx registration,
-  // so place the static gene canvas directly in that H&E frame.
   const heAspect = S.heOriginalH / S.heOriginalW;
 
   viewer.addOverlay({
@@ -4162,17 +4194,6 @@ function installGeneStaticOverlayIntoOSD() {
   });
 
   GE.staticOverlayEl = canvas;
-
-  console.log('[Gene Expression] static overlay placed in H&E frame:', {
-    x: 0,
-    y: 0,
-    width: 1,
-    height: heAspect,
-    rasterW: canvas.width,
-    rasterH: canvas.height,
-    heOriginalW: S.heOriginalW,
-    heOriginalH: S.heOriginalH
-  });
 }
 
 function refreshGeneStaticOverlay() {
@@ -4182,9 +4203,6 @@ function refreshGeneStaticOverlay() {
 }
 
 function maybeRefreshGeneDeepZoom() {
-  // Keep one H&E-coordinate static layer at every zoom level.
-  // Do not swap to the viewport renderer; that swap caused the layer
-  // to appear clipped because it used a different coordinate frame.
   if (GE.overlayCanvas) GE.overlayCanvas.style.visibility = 'hidden';
   if (GE.staticOverlayCanvas) {
     GE.staticOverlayCanvas.style.visibility =
@@ -4543,6 +4561,7 @@ async function loadGeneExpressionForSlide(slide) {
     if (token !== GE.loadToken || GE.slideId !== slide.id) return;
 
     GE.polygons = polygons;
+    GE.staticTypePaths = null;
     buildGeneSpatialGrid();
     GE.expression = expression;
 

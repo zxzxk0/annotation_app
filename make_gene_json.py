@@ -1,176 +1,144 @@
-from pathlib import Path
-import pandas as pd
-import numpy as np
+import csv
 import json
+from pathlib import Path
+from collections import OrderedDict
 
-BASE = Path(r"C:\Users\zxzxk\Downloads")
+CELL_CSV = Path(r"C:\Users\zxzxk\Downloads\cell_polygons(in).csv")
+GENE_CSV = Path(r"C:\Users\zxzxk\Downloads\GeneExpression.csv")
 
-# 파일명은 실제 이름에 맞게 바꿔줘
-POLY_CSV = BASE / "cell_polygons(in).csv"
-GENE_CSV = BASE / "GeneExpression(in).csv"
+OUT_DIR = Path(r"C:\Users\zxzxk\Downloads\annotation_app\docs\data\gene_expression\PreSCCT1_HE.ome")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-OUT_DIR = BASE / "PreSCCT1_gene_expression"
-OUT_DIR.mkdir(exist_ok=True)
+POLY_OUT = OUT_DIR / "cell_polygons.json"
+EXPR_OUT = OUT_DIR / "gene_expression.json"
 
-POLY_JSON = OUT_DIR / "cell_polygons.json"
-GENE_JSON = OUT_DIR / "gene_expression.json"
+# ------------------------------------------------------------
+# 1) Read corrected polygon CSV
+# ------------------------------------------------------------
+cells = OrderedDict()
+cell_types = []
+type_to_idx = {}
 
-print("Loading CSV files...")
+rows = 0
+xmin = ymin = float("inf")
+xmax = ymax = float("-inf")
 
-poly = pd.read_csv(POLY_CSV)
-gene = pd.read_csv(GENE_CSV)
+with CELL_CSV.open("r", encoding="utf-8-sig", newline="") as f:
+    reader = csv.DictReader(f)
 
-print("\n=== INPUT SUMMARY ===")
-print(f"Polygon rows: {len(poly):,}")
-print(f"Unique cells: {poly['cell'].nunique():,}")
-print(f"Cell types: {poly['cell_type'].nunique():,}")
-print(f"Genes: {len(gene):,}")
+    required = {"cell", "x_he_px", "y_he_px", "cell_type"}
+    missing = required - set(reader.fieldnames or [])
+    if missing:
+        raise RuntimeError(f"Missing columns in cell CSV: {missing}")
 
-required = {"cell", "x_he_px", "y_he_px", "cell_type"}
-missing = required - set(poly.columns)
+    for row in reader:
+        rows += 1
 
-if missing:
-    raise ValueError(f"Missing polygon columns: {missing}")
+        cid = str(row["cell"])
+        ctype = str(row["cell_type"])
+        x = round(float(row["x_he_px"]), 2)
+        y = round(float(row["y_he_px"]), 2)
 
-if "gene" not in gene.columns:
-    raise ValueError("GeneExpression.csv must contain a 'gene' column")
+        if ctype not in type_to_idx:
+            type_to_idx[ctype] = len(cell_types)
+            cell_types.append(ctype)
 
-# -------------------------------------------------------
-# Cell type mapping
-# -------------------------------------------------------
+        if cid not in cells:
+            cells[cid] = [type_to_idx[ctype], []]
 
-cell_types = sorted(poly["cell_type"].dropna().astype(str).unique())
+        cells[cid][1].extend([x, y])
 
-missing_types = [x for x in cell_types if x not in gene.columns]
+        xmin = min(xmin, x)
+        xmax = max(xmax, x)
+        ymin = min(ymin, y)
+        ymax = max(ymax, y)
 
-if missing_types:
-    print("\nWARNING:")
-    print("These polygon cell types are missing from GeneExpression.csv:")
-    for x in missing_types:
-        print(" -", x)
+print("Rows:", rows)
+print("Unique cells:", len(cells))
+print("Cell types:", len(cell_types))
+print("X range:", xmin, xmax)
+print("Y range:", ymin, ymax)
 
-type_to_idx = {
-    cell_type: i
-    for i, cell_type in enumerate(cell_types)
-}
+assert len(cells) == 191704, f"Expected 191704 cells, got {len(cells)}"
+assert len(cell_types) == 101, f"Expected 101 types, got {len(cell_types)}"
 
-# -------------------------------------------------------
-# Polygon JSON
-# -------------------------------------------------------
-
-print("\nBuilding polygon JSON...")
-
-cells = []
-
-for i, (cell_id, group) in enumerate(poly.groupby("cell", sort=False), 1):
-
-    cell_type = str(group["cell_type"].iloc[0])
-
-    xs = group["x_he_px"].to_numpy(dtype=float)
-    ys = group["y_he_px"].to_numpy(dtype=float)
-
-    coords = []
-
-    for x, y in zip(xs, ys):
-        coords.extend([
-            round(float(x), 2),
-            round(float(y), 2)
-        ])
-
-    bbox = [
-        round(float(xs.min()), 2),
-        round(float(ys.min()), 2),
-        round(float(xs.max()), 2),
-        round(float(ys.max()), 2),
-    ]
-
-    cells.append([
-        str(cell_id),
-        type_to_idx[cell_type],
-        coords,
-        bbox
-    ])
-
-    if i % 10000 == 0:
-        print(f"Processed {i:,} cells")
-
-polygon_payload = {
-    "version": 1,
+poly = {
+    "version": 3,
     "slide_id": "PreSCCT1_HE.ome",
     "coordinate_space": "he_level0_px",
     "types": cell_types,
-    "cells": cells
+    "cells": [[cid, t_idx, coords] for cid, (t_idx, coords) in cells.items()],
+    "meta": {
+        "rows": rows,
+        "unique_cells": len(cells),
+        "cell_types": len(cell_types),
+        "x_min": xmin,
+        "x_max": xmax,
+        "y_min": ymin,
+        "y_max": ymax
+    }
 }
 
-print("Writing polygon JSON...")
+with POLY_OUT.open("w", encoding="utf-8") as f:
+    json.dump(poly, f, separators=(",", ":"))
 
-with open(POLY_JSON, "w", encoding="utf-8") as f:
-    json.dump(
-        polygon_payload,
-        f,
-        ensure_ascii=False,
-        separators=(",", ":")
-    )
+print("Saved:", POLY_OUT)
 
-# -------------------------------------------------------
-# Gene-expression JSON
-# -------------------------------------------------------
+# ------------------------------------------------------------
+# 2) Read gene expression CSV and align to polygon type order
+# ------------------------------------------------------------
+with GENE_CSV.open("r", encoding="utf-8-sig", newline="") as f:
+    reader = csv.DictReader(f)
+    fields = reader.fieldnames or []
 
-print("\nBuilding gene-expression JSON...")
+    if len(fields) < 2:
+        raise RuntimeError("GeneExpression.csv has too few columns")
 
-genes = {}
+    gene_col = fields[0]
 
-for _, row in gene.iterrows():
+    missing_types = [t for t in cell_types if t not in fields]
+    if missing_types:
+        raise RuntimeError(
+            f"{len(missing_types)} polygon cell types missing from GeneExpression.csv: "
+            f"{missing_types[:10]}"
+        )
 
-    gene_name = str(row["gene"])
+    genes = {}
 
-    values = []
+    for row in reader:
+        gene = str(row[gene_col])
+        vals = []
 
-    for cell_type in cell_types:
+        for t in cell_types:
+            raw = row[t]
+            try:
+                vals.append(float(raw))
+            except (TypeError, ValueError):
+                vals.append(None)
 
-        if cell_type not in gene.columns:
-            values.append(None)
-            continue
+        genes[gene] = vals
 
-        value = row[cell_type]
-
-        if pd.isna(value):
-            values.append(None)
-        else:
-            values.append(round(float(value), 6))
-
-    genes[gene_name] = values
-
-expression_payload = {
-    "version": 1,
+expr = {
+    "version": 3,
     "slide_id": "PreSCCT1_HE.ome",
     "types": cell_types,
     "genes": genes
 }
 
-print("Writing gene-expression JSON...")
+with EXPR_OUT.open("w", encoding="utf-8") as f:
+    json.dump(expr, f, separators=(",", ":"))
 
-with open(GENE_JSON, "w", encoding="utf-8") as f:
-    json.dump(
-        expression_payload,
-        f,
-        ensure_ascii=False,
-        separators=(",", ":")
-    )
+print("Genes:", len(genes))
+assert len(genes) == 6175, f"Expected 6175 genes, got {len(genes)}"
 
-# -------------------------------------------------------
-# Final summary
-# -------------------------------------------------------
+print("Saved:", EXPR_OUT)
 
-print("\n=== DONE ===")
-print(f"Unique cells exported: {len(cells):,}")
-print(f"Genes exported: {len(genes):,}")
-print(f"Cell types: {len(cell_types):,}")
+# ------------------------------------------------------------
+# 3) Final sanity checks
+# ------------------------------------------------------------
+assert xmin >= 0 and xmax <= 37482
+assert ymin >= 0 and ymax <= 82972
 
-print("\nCreated:")
-print(POLY_JSON)
-print(GENE_JSON)
-
-print("\nFile sizes:")
-print(f"cell_polygons.json: {POLY_JSON.stat().st_size / 1024 / 1024:.2f} MB")
-print(f"gene_expression.json: {GENE_JSON.stat().st_size / 1024 / 1024:.2f} MB")
+print()
+print("ALL CHECKS PASSED")
+print("191,704 cells / 101 types / 6,175 genes")
