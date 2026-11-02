@@ -225,7 +225,7 @@ const GE = {
   loadToken: 0,
   overlayCanvas: null,
   pathsByType: null,
-  overlayRasterW: 4096,
+  overlayRasterW: 6144,
   deepZoomThreshold: 5, // legacy; viewport renderer below no longer uses a fixed 2048px raster
   polyTypeToExprType: null,
   spatialGrid: null,
@@ -1377,7 +1377,7 @@ function createRightViewer(tileSource) {
     applyGeneExpressionBaseLayerMode();
 
     // Hybrid mode:
-    // - pan/zoom uses the pre-rendered 4096px full-slide overlay
+    // - pan/zoom uses the pre-rendered 6144px full-slide overlay
     // - only after zooming finishes do we optionally redraw the current viewport sharply
     S.osdCosMx.addHandler('animation-finish', maybeRefreshGeneDeepZoom);
     S.osdCosMx.addHandler('resize', () => {
@@ -4158,6 +4158,14 @@ function buildGeneStaticOverlay() {
 
   const rasterW = GE.overlayRasterW || 4096;
   const rasterH = Math.max(1, Math.round(rasterW * (S.heOriginalH / S.heOriginalW)));
+  if (!GE._loggedStaticRasterSize) {
+    console.log('[Gene Expression] static raster size:', {
+      rasterW,
+      rasterH,
+      approxRGBA_MB: Math.round((rasterW * rasterH * 4) / 1024 / 1024)
+    });
+    GE._loggedStaticRasterSize = true;
+  }
 
   let canvas = GE.staticOverlayCanvas;
   if (!canvas) {
