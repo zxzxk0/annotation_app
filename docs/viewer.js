@@ -149,6 +149,8 @@ let TH_BINS = [];
 
 // Gene-expression overlay state (static GitHub Pages demo)
 const GE = {
+  staticRenderToken: 0,
+  staticRenderStats: null,
   staticTypePaths: null,
   staticPathRasterW: 0,
   staticPathRasterH: 0,
@@ -223,6 +225,38 @@ const ANNO_CLASS_STYLES = {
     label: 'Lymphocyte'
   }
 };
+
+window.geneRenderDebugReport = function() {
+  const s = GE.staticRenderStats;
+  if (!s) {
+    console.warn('[Gene Expression DEBUG] no render stats yet');
+    return null;
+  }
+  console.log('[Gene Expression DEBUG] current report', s);
+  console.table(s.yBands || []);
+  return s;
+};
+
+window.geneCanvasDebug = function() {
+  const c = GE.staticOverlayCanvas;
+  if (!c) {
+    console.warn('[Gene Expression DEBUG] static canvas not found');
+    return null;
+  }
+  const report = {
+    width: c.width,
+    height: c.height,
+    clientWidth: c.clientWidth,
+    clientHeight: c.clientHeight,
+    cssWidth: getComputedStyle(c).width,
+    cssHeight: getComputedStyle(c).height,
+    visibility: getComputedStyle(c).visibility,
+    display: getComputedStyle(c).display
+  };
+  console.log('[Gene Expression DEBUG] canvas report', report);
+  return report;
+};
+
 
 function normalizeAnnoClassName(value) {
   return String(value || 'other')
@@ -4073,101 +4107,182 @@ function buildGeneStaticOverlay() {
     GE.staticOverlayCanvas = canvas;
   }
 
-  canvas.width = rasterW;
-  canvas.height = rasterH;
+  // Only resize when dimensions actually change; resizing clears canvas.
+  if (canvas.width !== rasterW) canvas.width = rasterW;
+  if (canvas.height !== rasterH) canvas.height = rasterH;
 
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha: true });
   ctx.clearRect(0, 0, rasterW, rasterH);
 
   const sx = rasterW / S.heOriginalW;
   const sy = rasterH / S.heOriginalH;
+  const colors = _geneTypeColors();
+  const cells = GE.polygons.cells || [];
 
-  if (!GE.staticTypePaths ||
-      GE.staticPathRasterW !== rasterW ||
-      GE.staticPathRasterH !== rasterH) {
+  // Cancel any previous progressive render (e.g. user changed gene).
+  const token = ++GE.staticRenderToken;
 
-    const nTypes = (GE.polygons.types || []).length;
-    GE.staticTypePaths = Array.from({ length: nTypes }, () => new Path2D());
+  const bandSize = 10000;
+  const nBands = Math.ceil(S.heOriginalH / bandSize);
+  const stats = {
+    token,
+    totalCells: cells.length,
+    processed: 0,
+    drawn: 0,
+    badGeometry: 0,
+    unmappedType: 0,
+    noColor: 0,
+    yBands: Array.from({ length: nBands }, (_, i) => ({
+      y0: i * bandSize,
+      y1: Math.min((i + 1) * bandSize, S.heOriginalH),
+      drawn: 0
+    })),
+    rasterW,
+    rasterH,
+    heW: S.heOriginalW,
+    heH: S.heOriginalH,
+    gene: GE.selectedGene
+  };
+  GE.staticRenderStats = stats;
 
-    let validCells = 0;
-    let badCells = 0;
+  console.log('[Gene Expression DEBUG] render start', {
+    totalCells: cells.length,
+    polygonTypes: GE.polygons?.types?.length || 0,
+    expressionTypes: GE.expression?.types?.length || 0,
+    mappedTypes: (GE.polyTypeToExprType || []).filter(v => v >= 0).length,
+    gene: GE.selectedGene,
+    heOriginalW: S.heOriginalW,
+    heOriginalH: S.heOriginalH,
+    rasterW,
+    rasterH,
+    sx,
+    sy,
+    canvasPixelCount: rasterW * rasterH
+  });
 
-    for (const cell of (GE.polygons.cells || [])) {
-      const typeIdx = Number(cell[1]);
-      const coords = cell[2];
+  // Direct-per-cell rasterization avoids giant Path2D objects. Giant Path2D
+  // objects can silently truncate/behave poorly with millions of vertices.
+  const BATCH = 1500;
+
+  function drawBatch(start) {
+    if (token !== GE.staticRenderToken) return;
+
+    const end = Math.min(start + BATCH, cells.length);
+    let lastFill = null;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, GE.opacity ?? 1));
+
+    for (let i = start; i < end; i++) {
+      const cell = cells[i];
+      stats.processed++;
+
+      const typeIdx = Number(cell?.[1]);
+      const coords = cell?.[2];
 
       if (!Number.isInteger(typeIdx) ||
-          typeIdx < 0 ||
-          typeIdx >= nTypes ||
           !Array.isArray(coords) ||
           coords.length < 6) {
-        badCells++;
+        stats.badGeometry++;
         continue;
       }
 
-      const p = GE.staticTypePaths[typeIdx];
-      let started = false;
+      const exprTypeIdx = GE.polyTypeToExprType?.[typeIdx] ?? typeIdx;
+      if (!Number.isInteger(exprTypeIdx) || exprTypeIdx < 0) {
+        stats.unmappedType++;
+        continue;
+      }
+
+      const fill = colors[exprTypeIdx];
+      if (!fill) {
+        stats.noColor++;
+        continue;
+      }
+
+      let first = true;
+      let sumY = 0;
+      let nY = 0;
+
+      ctx.beginPath();
 
       for (let k = 0; k + 1 < coords.length; k += 2) {
         const hx = Number(coords[k]);
         const hy = Number(coords[k + 1]);
+
         if (!Number.isFinite(hx) || !Number.isFinite(hy)) continue;
 
         const px = hx * sx;
         const py = hy * sy;
 
-        if (!started) {
-          p.moveTo(px, py);
-          started = true;
+        if (first) {
+          ctx.moveTo(px, py);
+          first = false;
         } else {
-          p.lineTo(px, py);
+          ctx.lineTo(px, py);
         }
+
+        sumY += hy;
+        nY++;
       }
 
-      if (started) {
-        p.closePath();
-        validCells++;
-      } else {
-        badCells++;
+      if (first || nY < 3) {
+        stats.badGeometry++;
+        continue;
       }
+
+      ctx.closePath();
+
+      if (fill !== lastFill) {
+        ctx.fillStyle = fill;
+        lastFill = fill;
+      }
+      ctx.fill();
+
+      stats.drawn++;
+
+      const cy = sumY / nY;
+      const band = Math.max(0, Math.min(nBands - 1, Math.floor(cy / bandSize)));
+      stats.yBands[band].drawn++;
     }
 
-    GE.staticPathRasterW = rasterW;
-    GE.staticPathRasterH = rasterH;
+    ctx.restore();
 
-    console.log('[Gene Expression] geometry cache:', {
-      validCells,
-      badCells,
-      totalCells: GE.polygons?.cells?.length || 0,
-      types: nTypes
-    });
+    // Lightweight progress logs every ~15k cells.
+    if (end === cells.length || end % 15000 < BATCH) {
+      console.log(
+        `[Gene Expression DEBUG] ${end.toLocaleString()} / ${cells.length.toLocaleString()} processed; ` +
+        `${stats.drawn.toLocaleString()} drawn`
+      );
+    }
+
+    if (end < cells.length) {
+      requestAnimationFrame(() => drawBatch(end));
+      return;
+    }
+
+    console.log('[Gene Expression DEBUG] render complete', stats);
+    console.table(stats.yBands);
+
+    const bottomHalf = stats.yBands
+      .filter(b => b.y0 >= 40000)
+      .reduce((a, b) => a + b.drawn, 0);
+
+    console.log('[Gene Expression DEBUG] cells drawn below Y=40,000:', bottomHalf);
+
+    if (stats.drawn !== cells.length) {
+      console.warn('[Gene Expression DEBUG] not every cell was drawn', {
+        total: cells.length,
+        drawn: stats.drawn,
+        badGeometry: stats.badGeometry,
+        unmappedType: stats.unmappedType,
+        noColor: stats.noColor
+      });
+    } else {
+      console.log('[Gene Expression DEBUG] ALL polygon cells were rasterized.');
+    }
   }
 
-  const colors = _geneTypeColors();
-
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, GE.opacity ?? 1));
-
-  for (let typeIdx = 0; typeIdx < GE.staticTypePaths.length; typeIdx++) {
-    const exprTypeIdx = GE.polyTypeToExprType?.[typeIdx] ?? typeIdx;
-    if (exprTypeIdx < 0) continue;
-
-    const fill = colors[exprTypeIdx];
-    if (!fill) continue;
-
-    ctx.fillStyle = fill;
-    ctx.fill(GE.staticTypePaths[typeIdx], 'nonzero');
-  }
-
-  ctx.restore();
-
-  console.log('[Gene Expression] static overlay rendered:', {
-    cells: GE.polygons?.cells?.length || 0,
-    gene: GE.selectedGene,
-    rasterW,
-    rasterH
-  });
-
+  requestAnimationFrame(() => drawBatch(0));
   return canvas;
 }
 
@@ -4561,7 +4676,6 @@ async function loadGeneExpressionForSlide(slide) {
     if (token !== GE.loadToken || GE.slideId !== slide.id) return;
 
     GE.polygons = polygons;
-    GE.staticTypePaths = null;
     buildGeneSpatialGrid();
     GE.expression = expression;
 
