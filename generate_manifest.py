@@ -42,6 +42,8 @@ def find_slides():
         if not slide_dir.is_dir():
             continue
         slide_id = slide_dir.name
+        if slide_id != "PreSCCT1_HE.ome":
+            continue
         dzi_file = slide_dir / f"{slide_id}.dzi"
         if not dzi_file.exists():
             print(f"  [SKIP] DZI 없음: {slide_id}")

@@ -4031,10 +4031,6 @@ function updateGeneOverlayVisibility() {
   if (GE.overlayCanvas) {
     GE.overlayCanvas.style.visibility = 'hidden';
   }
-
-  if (show) {
-    maybeRefreshGeneDeepZoom();
-  }
 }
 
 function removeGeneOverlayFromOSD() {
@@ -4154,27 +4150,26 @@ function installGeneStaticOverlayIntoOSD() {
 
   canvas.style.pointerEvents = 'none';
 
-  const item = viewer.world?.getItemAt(0);
-  if (!item) {
-    console.warn('[Gene Expression] no CosMx TiledImage available for overlay placement');
-    return;
-  }
-
-  const b = item.getBounds(true);
+  // Gene polygons are already in H&E level-0 coordinates.
+  // The right viewer is fit to the H&E reference frame after CosMx registration,
+  // so place the static gene canvas directly in that H&E frame.
+  const heAspect = S.heOriginalH / S.heOriginalW;
 
   viewer.addOverlay({
     element: canvas,
-    location: new OpenSeadragon.Rect(b.x, b.y, b.width, b.height),
+    location: new OpenSeadragon.Rect(0, 0, 1, heAspect),
     checkResize: false
   });
 
   GE.staticOverlayEl = canvas;
 
-  console.log('[Gene Expression] static overlay placement:', {
-    x: b.x,
-    y: b.y,
-    width: b.width,
-    height: b.height,
+  console.log('[Gene Expression] static overlay placed in H&E frame:', {
+    x: 0,
+    y: 0,
+    width: 1,
+    height: heAspect,
+    rasterW: canvas.width,
+    rasterH: canvas.height,
     heOriginalW: S.heOriginalW,
     heOriginalH: S.heOriginalH
   });
@@ -4187,22 +4182,13 @@ function refreshGeneStaticOverlay() {
 }
 
 function maybeRefreshGeneDeepZoom() {
-  const viewer = S.osdCosMx;
-  if (!viewer || GE.mode !== 'gene') return;
-
-  const zoom = viewer.viewport.getZoom(true);
-  const threshold = GE.deepZoomThreshold || 5;
-
-  // Default behavior: keep the fast 4096px full-slide overlay.
-  // Only at deeper zoom levels do we redraw the currently visible region sharply.
-  if (zoom >= threshold) {
-    installGeneViewportCanvas();
-    requestGeneViewportRedraw();
-    if (GE.overlayCanvas) GE.overlayCanvas.style.visibility = 'visible';
-    if (GE.staticOverlayCanvas) GE.staticOverlayCanvas.style.visibility = 'hidden';
-  } else {
-    if (GE.overlayCanvas) GE.overlayCanvas.style.visibility = 'hidden';
-    if (GE.staticOverlayCanvas) GE.staticOverlayCanvas.style.visibility = 'visible';
+  // Keep one H&E-coordinate static layer at every zoom level.
+  // Do not swap to the viewport renderer; that swap caused the layer
+  // to appear clipped because it used a different coordinate frame.
+  if (GE.overlayCanvas) GE.overlayCanvas.style.visibility = 'hidden';
+  if (GE.staticOverlayCanvas) {
+    GE.staticOverlayCanvas.style.visibility =
+      (GE.mode === 'gene') ? 'visible' : 'hidden';
   }
 }
 
@@ -4478,11 +4464,7 @@ function requestGeneViewportRedraw() {
 
 function installGeneOverlayIntoOSD() {
   installGeneStaticOverlayIntoOSD();
-
-  // Prepare the viewport canvas, but keep it hidden until deep zoom is reached.
-  installGeneViewportCanvas();
   if (GE.overlayCanvas) GE.overlayCanvas.style.visibility = 'hidden';
-
   updateGeneOverlayVisibility();
 }
 
@@ -4834,13 +4816,7 @@ function geneValueColor(v) {
 
 function requestGeneOverlayRedraw() {
   if (GE.mode !== 'gene') return;
-
-  // Rebuild once when the gene, opacity, or alignment changes.
-  // Do not redraw continuously while the user is panning/zooming.
   refreshGeneStaticOverlay();
-
-  // If already deeply zoomed in, refresh the sharp viewport layer once as well.
-  maybeRefreshGeneDeepZoom();
 }
 
 function drawGeneExpressionOverlay() {
