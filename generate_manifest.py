@@ -25,8 +25,8 @@ DOCS_DIR         = DEMO_DIR / "docs"
 OUTPUT_JSON      = DOCS_DIR / "slides.json"
 
 # GitHub Pages에서 접근할 때의 base path
-# 레포 이름이 Pathology_Demo 이면 "/Pathology_Demo"
-REPO_BASE        = "/Pathology_Demo"
+# 레포 이름이 Pathology_Demo 이면 "/annotation_app"
+REPO_BASE        = "/annotation_app"
 #REPO_BASE        = ""
 
 # ── 슬라이드 스캔 ─────────────────────────────────────────────────────────
