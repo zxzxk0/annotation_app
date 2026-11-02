@@ -49,7 +49,7 @@ def find_slides():
 
         # CosMx 확인
         cx_dir   = COSMX_TILES_DIR / slide_id
-        cx_dzis = list(cx_dir.glob("*_registered.dzi")) if cx_dir.exists() else []
+        cx_dzis = list(cx_dir.glob("*.dzi")) if cx_dir.exists() else []
         if not cx_dzis:
             cx_dzis = list(cx_dir.glob("*.dzi")) if cx_dir.exists() else []
         has_cosmx = len(cx_dzis) > 0
@@ -122,3 +122,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+\
+
