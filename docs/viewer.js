@@ -61,24 +61,83 @@ async function loadHeDziMeta(slideOrId) {
     const dziW = Number(sizeEl.getAttribute('Width'));
     const dziH = Number(sizeEl.getAttribute('Height'));
 
-    if (!Number.isFinite(dziW) || !Number.isFinite(dziH) || dziW <= 0 || dziH <= 0) {
+    if (!Number.isFinite(dziW) || !Number.isFinite(dziH) ||
+        dziW <= 0 || dziH <= 0) {
       throw new Error('Invalid DZI Width/Height');
     }
 
-    S.heOriginalW = dziW;
-    S.heOriginalH = dziH;
-    S.heDziDownsample = 1;
+    // IMPORTANT:
+    // The DZI in this demo may itself be downsampled relative to the original
+    // H&E level-0 coordinates used by cell_polygons.json.
+    //
+    // Prefer the original H&E size stored in slides.json when available.
+    const originalHe = slide?.cosmx?.original_sizes?.he;
 
-    console.log('[H&E] DZI metadata:', {
-      source: 'DZI XML',
-      slideId,
-      originalW: S.heOriginalW,
-      originalH: S.heOriginalH,
-      downsample: S.heDziDownsample
-    });
+    if (Array.isArray(originalHe) &&
+        originalHe.length >= 2 &&
+        Number(originalHe[0]) > 0 &&
+        Number(originalHe[1]) > 0) {
+
+      S.heOriginalW = Number(originalHe[0]);
+      S.heOriginalH = Number(originalHe[1]);
+
+      const dsX = S.heOriginalW / dziW;
+      const dsY = S.heOriginalH / dziH;
+
+      // For PreSCCT1 these should both be ~2.
+      S.heDziDownsample = (dsX + dsY) / 2;
+
+      console.log('[H&E] DZI metadata:', {
+        source: 'slides.json original_sizes.he + DZI XML',
+        slideId,
+        dziW,
+        dziH,
+        originalW: S.heOriginalW,
+        originalH: S.heOriginalH,
+        downsampleX: dsX,
+        downsampleY: dsY,
+        downsample: S.heDziDownsample
+      });
+
+      if (Math.abs(dsX - dsY) > 0.01) {
+        console.warn('[H&E] non-uniform DZI downsample detected', {
+          downsampleX: dsX,
+          downsampleY: dsY
+        });
+      }
+
+    } else {
+      // Fallback for slides without explicit original size metadata.
+      S.heOriginalW = dziW;
+      S.heOriginalH = dziH;
+      S.heDziDownsample = 1;
+
+      console.warn('[H&E] original_sizes.he missing; falling back to DZI size', {
+        slideId,
+        dziW,
+        dziH
+      });
+    }
+
   } catch (e) {
-    console.warn('[H&E] DZI descriptor unavailable; using 1:1 annotation coordinates.', e);
-    S.heDziDownsample = 1;
+    console.warn('[H&E] DZI descriptor unavailable; using manifest size if present.', e);
+
+    const originalHe = slide?.cosmx?.original_sizes?.he;
+
+    if (Array.isArray(originalHe) &&
+        originalHe.length >= 2 &&
+        Number(originalHe[0]) > 0 &&
+        Number(originalHe[1]) > 0) {
+
+      S.heOriginalW = Number(originalHe[0]);
+      S.heOriginalH = Number(originalHe[1]);
+      S.heDziDownsample = 1;
+
+      console.log('[H&E] fallback original size from slides.json:', {
+        originalW: S.heOriginalW,
+        originalH: S.heOriginalH
+      });
+    }
   }
 }
 
@@ -4153,12 +4212,22 @@ function buildGeneStaticOverlay() {
     gene: GE.selectedGene,
     heOriginalW: S.heOriginalW,
     heOriginalH: S.heOriginalH,
+    heDziDownsample: S.heDziDownsample,
     rasterW,
     rasterH,
     sx,
     sy,
     canvasPixelCount: rasterW * rasterH
   });
+
+  if (GE.polygons?.meta?.y_max && S.heOriginalH < GE.polygons.meta.y_max) {
+    console.error('[Gene Expression DEBUG] H&E original size suspicious:', {
+      heOriginalH: S.heOriginalH,
+      polygonYMax: GE.polygons.meta.y_max,
+      message: 'Polygon coordinates extend beyond configured H&E height.'
+    });
+  }
+
 
   // Direct-per-cell rasterization avoids giant Path2D objects. Giant Path2D
   // objects can silently truncate/behave poorly with millions of vertices.
