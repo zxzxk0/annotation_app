@@ -147,6 +147,8 @@ function getCosMxDziUrl(info) {
 }
 
 
+const DEFAULT_SLIDE_ID = 'PreSCCT1_HE.ome';
+
 // ===========================================================================
 // STATE
 // ===========================================================================
@@ -155,7 +157,7 @@ const S = {
   slides: [], current: null,
   rightBase: 'cosmx', rightHeDzi: null, rightCosMxDzi: null,
   osdHE: null, osdCosMx: null, anno: null,
-  syncEnabled: false, syncing: false,
+  syncEnabled: true, syncing: false,
   cosmxVisible: true, annoCount: 0,
   cosmxRot: 0, cosmxFlipX: false, cosmxFlipY: false, cosmxScale: 1.0,
   cosmxTransformPayload: null,
@@ -499,8 +501,17 @@ async function initWebApp() {
     populateSlideSelect(S.slides);
 
     if (S.slides.length > 0) {
-      await loadSlide(S.slides[0]);
-      document.getElementById('slideSelect').value = S.slides[0].id;
+      const defaultSlide =
+        S.slides.find(s => s.id === DEFAULT_SLIDE_ID) ||
+        S.slides[0];
+
+      const slideSelect = document.getElementById('slideSelect');
+      if (slideSelect) slideSelect.value = defaultSlide.id;
+
+      console.log('[Init] default slide:', defaultSlide.id);
+      console.log('[Init] sync default:', S.syncEnabled ? 'ON' : 'OFF');
+
+      await loadSlide(defaultSlide);
     } else {
       statusText('Ready');
     }

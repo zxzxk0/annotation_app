@@ -483,7 +483,7 @@ body {
     <span class="slide-chip" id="viewerSlideChip">—</span>
     <div class="hactions">
       <button class="hbtn window-on" id="btnCosMx" onclick="toggleCosMx()" title="Show or hide the right comparison window">Window: ON</button>
-      <button class="hbtn" id="btnSync" onclick="toggleSync()">Sync: OFF</button>
+      <button class="hbtn on" id="btnSync" onclick="toggleSync()">Sync: ON</button>
       <button class="hbtn" onclick="resyncPanels()">Re-sync</button>
       <button class="hbtn on" id="btnRightBase" onclick="toggleRightBase()" title="Switch the right comparison window between registered CosMx and original H&amp;E">Right: CosMx</button>
       <!-- ADDED: logo.png — 타일 서버를 통해 서빙 (exe 빌드 시에도 동작) -->
@@ -727,7 +727,7 @@ body {
   <div class="status-bar">
     <div><span class="sdot"></span><span id="statusText">Ready</span></div>
     <div>Annotations: <span class="anno-count" id="annoCount">0</span></div>
-    <div id="syncStatus">Independent panels</div>
+    <div id="syncStatus">Following H&E movement only</div>
   </div>
 </div>
 
