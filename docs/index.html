@@ -471,12 +471,205 @@ body {
 .gene-nudge-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.28rem;margin-top:.45rem}
 .gene-nudge-grid button,.gene-align-actions button{padding:.28rem;font-size:.63rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer}
 .gene-align-actions{display:flex;gap:.35rem;margin-top:.45rem}.gene-align-actions button{flex:1}
+
+
+/* ===== Finalized Annotation Tools accordion ===== */
+.annotation-tools-shell {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.annotation-accordion,
+.annotation-sub-accordion {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: rgba(255,255,255,.015);
+}
+.annotation-accordion > summary,
+.annotation-sub-accordion > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.annotation-accordion > summary::-webkit-details-marker,
+.annotation-sub-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+.annotation-main-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .72rem .72rem;
+  color: var(--accent);
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .45px;
+  text-transform: uppercase;
+  background: var(--card);
+}
+.annotation-main-summary:hover {
+  filter: brightness(1.08);
+}
+.annotation-main-summary .annotation-chevron,
+.annotation-sub-summary .annotation-chevron {
+  transition: transform .18s ease;
+  opacity: .85;
+}
+.annotation-accordion[open] > .annotation-main-summary .annotation-chevron,
+.annotation-sub-accordion[open] > .annotation-sub-summary .annotation-chevron {
+  transform: rotate(90deg);
+}
+.annotation-main-body {
+  padding: .55rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  border-top: 1px solid var(--border);
+}
+.annotation-sub-accordion {
+  border-radius: 6px;
+  background: var(--panel);
+}
+.annotation-sub-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .45rem;
+  padding: .56rem .6rem;
+  font-size: .69rem;
+  font-weight: 750;
+  color: var(--text);
+  background: rgba(255,255,255,.025);
+}
+.annotation-sub-summary:hover {
+  background: rgba(255,255,255,.045);
+}
+.annotation-sub-body {
+  padding: .58rem;
+  border-top: 1px solid var(--border);
+}
+.annotation-sub-body .cg {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+.annotation-sub-body .cg + .cg {
+  margin-top: .65rem;
+  padding-top: .65rem;
+  border-top: 1px solid var(--border);
+}
+.annotation-mini-title {
+  margin: 0 0 .45rem;
+  color: var(--muted);
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+}
+
+
+/* ===== Annotation Tools UI polish ===== */
+#sidebar {
+  width: 228px;
+  min-width: 228px;
+}
+
+.annotation-tools-panel,
+.annotation-tools-panel * {
+  box-sizing: border-box;
+}
+
+.annotation-tools-panel {
+  padding: 8px 8px 10px;
+}
+
+.annotation-tools-panel .section-title,
+.annotation-tools-panel .subsection-title {
+  margin: 4px 0 8px;
+}
+
+.annotation-tools-panel .tool-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.annotation-tools-panel .tool-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.annotation-tools-panel button {
+  min-height: 30px;
+  padding: 6px 8px;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.annotation-tools-panel .wand-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  align-items: stretch;
+}
+
+.annotation-tools-panel .wand-row button {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.annotation-tools-panel .helper-text {
+  margin: 6px 0 9px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #9fb0d0;
+}
+
+.annotation-tools-panel .helper-text.compact {
+  display: none;
+}
+
+.annotation-tools-panel .ai-actions button,
+.annotation-tools-panel .eval-actions button {
+  width: 100%;
+}
+
+.annotation-tools-panel .danger-btn {
+  margin-top: 2px;
+}
+
+.annotation-tools-panel .status-box {
+  margin-top: 6px;
+}
+
+.annotation-tools-panel details {
+  margin-top: 7px;
+}
+
+.annotation-tools-panel summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+@media (min-width: 1500px) {
+  #sidebar {
+    width: 240px;
+    min-width: 240px;
+  }
+}
+
 </style>
 </head>
 <body>
 
 <!-- ══ SCREEN: VIEWER ══════════════════════════════════════════════════════ -->
-<div id="screen-viewer" class="screen active">
+<div id="screen-viewer" class="screen active tool-grid-2 wand-row">
   <div class="v-header">
     <span class="v-logo">PATHOGENE</span><span class="slide-chip" title="Lightweight Flask demo using pre-generated tiles">DEMO</span>
     <select id="slideSelect" onchange="onSlideChange(this.value)"><option value="">Select slide...</option></select>
@@ -499,13 +692,6 @@ body {
           <button class="sbtn danger" onclick="setQC('rejected')">Reject</button>
         </div>
         <div class="qc-badge" id="qcBadge">Unreviewed</div>
-      </div>
-      <div class="cg">
-        <h4>Annotation Key</h4>
-        <div class="legend-row"><div class="cbox" style="background:rgba(231,76,60,.5);border:2px solid #e74c3c"></div>Tumor</div>
-        <div class="legend-row"><div class="cbox" style="background:rgba(46,204,113,.5);border:2px solid #2ecc71"></div>Stroma</div>
-        <div class="legend-row"><div class="cbox" style="background:rgba(155,89,182,.5);border:2px solid #9b59b6"></div>Other / In-situ</div>
-        <div class="legend-row"><div class="cbox" style="background:rgba(0,255,255,.3);border:2px solid #0ff"></div>Lymphocyte</div>
       </div>
 
       <div class="cg" id="geneExpressionPanel">
@@ -569,9 +755,32 @@ body {
         </div>
       </div>
 
-      <!-- ADDED: Draw Annotation (polygon) -->
-      <div class="cg">
-        <h4>Draw Annotation</h4>
+
+
+      <!-- Finalized: annotation tools are collapsed by default -->
+      <div class="cg annotation-tools-shell">
+        <details class="annotation-accordion" id="annotationToolsAccordion">
+          <summary class="annotation-main-summary" aria-label="Toggle annotation tools">
+            <span>Annotation Tools</span>
+            <span class="annotation-chevron">▶</span>
+          </summary>
+          <div class="annotation-main-body">
+
+            <details class="annotation-sub-accordion" id="annotationDrawAccordion">
+              <summary class="annotation-sub-summary">
+                <span>Draw &amp; Edit</span>
+                <span class="annotation-chevron">▶</span>
+              </summary>
+              <div class="annotation-sub-body">
+                <div class="cg">
+        <div class="annotation-mini-title">Annotation Key</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(231,76,60,.5);border:2px solid #e74c3c"></div>Tumor</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(46,204,113,.5);border:2px solid #2ecc71"></div>Stroma</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(155,89,182,.5);border:2px solid #9b59b6"></div>Other / In-situ</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(0,255,255,.3);border:2px solid #0ff"></div>Lymphocyte</div>
+      </div>
+                <div class="cg">
+        <div class="annotation-mini-title">Classes & Drawing</div>
         <div class="crow">
           <button class="sbtn" id="btnDrawLabel-tumor"  data-label="tumor"  onclick="setDrawLabel('tumor')">Tumor</button>
           <button class="sbtn" id="btnDrawLabel-stroma" data-label="stroma" onclick="setDrawLabel('stroma')">Stroma</button>
@@ -583,7 +792,7 @@ body {
         <button class="sbtn" id="btnDrawPolygon" style="margin-top:0.6rem;width:100%;" onclick="toggleDrawPolygon()">Draw Polygon</button>
         <button class="sbtn" id="btnLasso" style="margin-top:0.4rem;width:100%;" onclick="toggleLassoMode()">Freehand Lasso</button>
         <div id="lassoHint" style="font-size:0.66rem;color:var(--muted);margin-top:0.25rem;line-height:1.35;">
-          Select a class, enable Freehand Lasso, then drag around the region and release to create a polygon.
+          <span class="helper-text">Select a class, then drag to create a freehand region.</span>
         </div>
 
         <!-- Magic Wand: press-drag controls selection strength -->
@@ -601,7 +810,7 @@ body {
             Selection strength: —
           </div>
           <div id="magicWandHint" style="font-size:0.65rem;color:var(--muted);margin-top:0.25rem;line-height:1.35;">
-            Select a class, enable Magic Wand, then press inside tissue and drag. A longer drag expands the color-selection range. Release to preview, then Apply Wand.
+            <span class="helper-text">Select a class, then drag on tissue to adjust the selection. Release to preview.</span>
           </div>
         </div>
 
@@ -630,11 +839,17 @@ body {
         <button class="sbtn" id="btnClearImported" style="margin-top:0.4rem;width:100%;"
                 onclick="clearImportedAnnotations()">Clear Imported AI</button>
       </div>
-      <!-- END ADDED -->
+              </div>
+            </details>
 
-      <!-- ADDED: Segmentation GT-coverage evaluation -->
-      <div class="cg" id="segEvalPanel">
-        <h4>Segmentation Evaluation</h4>
+            <details class="annotation-sub-accordion" id="annotationEvalAccordion">
+              <summary class="annotation-sub-summary">
+                <span>Evaluation</span>
+                <span class="annotation-chevron">▶</span>
+              </summary>
+              <div class="annotation-sub-body">
+                <div class="cg" id="segEvalPanel">
+        
         <input type="file" id="gtSegInput" accept=".json,.geojson" style="display:none" onchange="loadSegmentationEvalFile(this, 'gt')">
         <button class="sbtn" style="width:100%;margin-bottom:0.35rem;" onclick="document.getElementById('gtSegInput').click()">Load Pathologist GT</button>
         <div id="gtSegName" style="font-size:0.68rem;color:var(--muted);margin-bottom:0.55rem;word-break:break-word;">GT: not loaded</div>
@@ -646,11 +861,17 @@ body {
         <button class="sbtn" id="btnSegEvaluate" style="width:100%;font-weight:700;" onclick="evaluateSegmentation()" disabled>Calculate GT Coverage</button>
         <div id="segEvalResults" style="display:none;margin-top:0.65rem;padding:0.55rem;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:0.72rem;line-height:1.55;"></div>
       </div>
-      <!-- END ADDED -->
+              </div>
+            </details>
 
-      <!-- ADDED: Confidence Threshold section -->
-      <div class="cg">
-        <h4>AI Lymphocyte Threshold</h4>
+            <details class="annotation-sub-accordion" id="annotationLymphAccordion">
+              <summary class="annotation-sub-summary">
+                <span>AI Lymphocyte</span>
+                <span class="annotation-chevron">▶</span>
+              </summary>
+              <div class="annotation-sub-body">
+                <div class="cg">
+        
         <input type="file" id="thImportInput" accept=".json,.geojson" style="display:none">
         <button class="sbtn" style="width:100%;margin-bottom:0.4rem;"
                 onclick="document.getElementById('thImportInput').click()">
@@ -694,7 +915,13 @@ body {
         </div>
         <div id="thNoData">No data loaded</div>
       </div>
-      <!-- END ADDED -->
+              </div>
+            </details>
+
+          </div>
+        </details>
+      </div>
+      <!-- End finalized annotation tools -->
 
       <button class="sbtn" style="width:100%;margin-top:0.5rem;" onclick="toggleSidePanel()">Collapse</button>
     </div>

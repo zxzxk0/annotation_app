@@ -10,7 +10,7 @@ cd E:\Pathology_Demo
 
 python generate_manifest.py
 
-cd C:\Users\zxzxk\Downloads\annotation_app
+cd /d D:\annotation_app
 
 git add -A
 

@@ -36,8 +36,8 @@ with CELL_CSV.open("r", encoding="utf-8-sig", newline="") as f:
 
         cid = str(row["cell"])
         ctype = str(row["cell_type"])
-        x = round(float(row["x_he_px"]), 2)
-        y = round(float(row["y_he_px"]), 2)
+        x = float(row["x_he_px"])
+        y = float(row["y_he_px"])
 
         if ctype not in type_to_idx:
             type_to_idx[ctype] = len(cell_types)

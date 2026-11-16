@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pathogene</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.14/dist/openseadragon-annotorious.min.js"></script>
+<link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.14/dist/annotorious.min.css">
+<!-- ADDED: Chart.js for confidence threshold histogram -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ── Reset / Variables ─────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#0f0f1a; --surface:#16213e; --card:#1a1a2e; --border:#0f3460;
+  --accent:#00d4ff; --ok:#27ae60; --warn:#f39c12; --danger:#e74c3c;
+  --text:#e8eaf0; --muted:#8892a4;
+}
+body {
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg); color:var(--text); height:100vh; overflow:hidden;
+}
+.screen { display:none; width:100%; height:100vh; flex-direction:column; }
+.screen.active { display:flex; }
+
+/* ══ VIEWER ═══════════════════════════════════════════════════════════════ */
+.v-header {
+  background:var(--surface); padding:0.6rem 1.2rem; display:flex; align-items:center;
+  gap:0.8rem; border-bottom:2px solid var(--accent); flex-shrink:0;
+}
+.v-logo { font-size:1rem; font-weight:700; color:var(--accent); letter-spacing:1px; }
+.slide-chip { background:var(--border); padding:0.2rem 0.8rem; border-radius:12px; font-size:0.8rem; }
+.hactions { margin-left:auto; display:flex; gap:0.5rem; align-items:center; }
+#slideSelect {
+  padding:0.3rem 0.7rem; background:var(--card); border:1px solid var(--border);
+  color:var(--text); border-radius:6px; font-size:0.82rem; cursor:pointer; max-width:220px;
+}
+.hbtn {
+  padding:0.35rem 0.9rem; font-size:0.78rem; background:var(--card);
+  border:1px solid var(--border); color:var(--text); border-radius:6px;
+  cursor:pointer; transition:all 0.2s; white-space:nowrap;
+}
+.hbtn:hover { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+.hbtn.on    { background:var(--ok);   color:white; border-color:var(--ok); }
+.hbtn.window-on  { background:var(--warn); color:var(--bg); border-color:var(--warn); font-weight:700; }
+.hbtn.window-off { background:var(--card); color:var(--muted); border-color:var(--border); }
+.hbtn.new   { background:var(--accent); color:var(--bg); font-weight:700; border:none; }
+.v-body { flex:1; display:flex; min-height:0; }
+.side-panel {
+  width:230px; background:var(--surface); border-right:1px solid var(--border);
+  padding:1rem; overflow-y:auto; flex-shrink:0; transition:width 0.25s, padding 0.25s;
+}
+.side-panel.collapsed { width:0; padding:0; overflow:hidden; }
+#expandBtn {
+  display:none; writing-mode:vertical-rl; padding:0.5rem 0.3rem;
+  background:var(--surface); border:none; border-right:1px solid var(--border);
+  color:var(--accent); cursor:pointer; font-size:0.72rem; letter-spacing:1px;
+}
+.cg { margin-bottom:1.2rem; }
+.cg h4 { font-size:0.72rem; text-transform:uppercase; color:var(--accent); letter-spacing:1px; margin-bottom:0.6rem; }
+.crow { display:flex; gap:0.4rem; margin-bottom:0.4rem; }
+.sbtn {
+  flex:1; padding:0.4rem; font-size:0.78rem; background:var(--card);
+  border:1px solid var(--border); color:var(--text); border-radius:5px;
+  cursor:pointer; transition:all 0.15s; white-space:nowrap;
+}
+.sbtn:hover  { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+.sbtn:disabled { opacity:0.4; cursor:not-allowed; pointer-events:none; }
+.sbtn.on     { background:var(--ok);     color:white; border-color:var(--ok); }
+.sbtn.danger { background:var(--danger); color:white; border-color:var(--danger); }
+.qc-badge {
+  text-align:center; padding:0.35rem; border-radius:5px;
+  font-size:0.78rem; font-weight:600; background:#333; color:var(--muted); margin-top:0.5rem;
+}
+.qc-badge.approved { background:var(--ok);     color:white; }
+.qc-badge.rejected { background:var(--danger); color:white; }
+.sw { margin-top:0.3rem; }
+.sw label { font-size:0.75rem; color:var(--muted); }
+.sw input[type=range] { width:100%; margin-top:0.25rem; cursor:pointer; }
+.pr { display:flex; gap:0.3rem; margin-top:0.3rem; }
+.pr button {
+  flex:1; padding:0.25rem; font-size:0.7rem; background:var(--card);
+  border:1px solid var(--border); color:var(--muted); border-radius:4px; cursor:pointer;
+}
+.pr button.active { background:var(--accent); color:var(--bg); font-weight:700; }
+.legend-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem; font-size:0.78rem; }
+.cbox { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+.empty-state {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:var(--muted); gap:1rem;
+}
+.empty-state .empty-icon { font-size:3rem; opacity:0.4; }
+.empty-state p { font-size:0.9rem; }
+.empty-state button {
+  padding:0.7rem 2rem; background:var(--accent); color:var(--bg); border:none;
+  border-radius:8px; font-size:0.9rem; font-weight:700; cursor:pointer; margin-top:0.5rem;
+}
+.panels-wrap { flex:1; display:flex; gap:2px; background:var(--border); min-width:0; overflow:hidden; }
+.vp { flex:1; display:flex; flex-direction:column; background:var(--bg); min-width:0; overflow:hidden; }
+.vp-hdr {
+  background:var(--surface); padding:0.5rem 0.8rem; font-size:0.78rem; font-weight:600;
+  color:var(--accent); text-transform:uppercase; letter-spacing:0.5px;
+  border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.vp-body { flex:1; position:relative; min-height:0; overflow:hidden; }
+#viewerLeft, #viewerRight {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  transform-origin:center center;
+}
+#viewerLeft .openseadragon-container,
+#viewerRight .openseadragon-container {
+  overflow:hidden !important;
+}
+.status-bar {
+  background:rgba(22,33,62,0.95); padding:0.4rem 1.2rem; font-size:0.78rem;
+  color:var(--muted); display:flex; justify-content:space-between; align-items:center;
+  border-top:1px solid var(--border); flex-shrink:0;
+}
+.sdot { width:7px; height:7px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:0.4rem; }
+.anno-count { background:var(--accent); color:var(--bg); padding:0.15rem 0.6rem; border-radius:10px; font-weight:700; }
+
+/* ══ REGISTER ═════════════════════════════════════════════════════════════ */
+#screen-register {
+  align-items:center; justify-content:center; position:relative;
+  background:radial-gradient(ellipse at 50% 30%, #1a2a4a 0%, var(--bg) 70%);
+}
+.reg-header {
+  position:absolute; top:0; left:0; right:0; background:var(--surface);
+  padding:0.6rem 1.2rem; display:flex; align-items:center; gap:0.8rem;
+  border-bottom:2px solid var(--warn);
+}
+.reg-header .v-logo { color:var(--warn); }
+.reg-back {
+  padding:0.35rem 0.9rem; font-size:0.78rem; background:var(--card);
+  border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer;
+}
+.reg-back:hover { background:var(--warn); color:var(--bg); border-color:var(--warn); }
+.reg-box { text-align:center; }
+.reg-title { font-size:1.3rem; font-weight:700; margin-bottom:0.4rem; }
+.reg-sub   { font-size:0.85rem; color:var(--muted); margin-bottom:1.5rem; }
+.reg-options { margin-bottom:1.2rem; max-width:500px; width:100%; text-align:left; }
+.reg-options-label { font-size:0.7rem; text-transform:uppercase; color:var(--accent); letter-spacing:1px; margin-bottom:0.4rem; }
+.seg-control { display:flex; background:var(--card); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg-btn {
+  flex:1; padding:0.5rem 1rem; background:none; border:none; color:var(--muted);
+  font-size:0.82rem; cursor:pointer; transition:all 0.2s; font-weight:500; line-height:1.4;
+}
+.seg-btn:hover  { background:rgba(0,212,255,0.08); color:var(--text); }
+.seg-btn.active { background:var(--accent); color:var(--bg); font-weight:700; }
+.drop-row { display:flex; gap:1.5rem; margin-bottom:1.5rem; justify-content:center; }
+.drop-zone {
+  width:220px; height:160px; border:2px dashed var(--border); border-radius:16px;
+  background:var(--card); display:flex; flex-direction:column; align-items:center;
+  justify-content:center; cursor:pointer; transition:all 0.25s;
+  position:relative; overflow:hidden; user-select:none;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color:var(--accent); background:#1e2a4a;
+  transform:translateY(-2px); box-shadow:0 8px 30px rgba(0,212,255,0.15);
+}
+.drop-zone.filled { border-color:var(--ok); border-style:solid; background:#0f2a1a; }
+.dz-check  { display:none; position:absolute; top:10px; right:12px; font-size:1.1rem; }
+.drop-zone.filled .dz-check { display:block; }
+.dz-icon   { font-size:2rem; margin-bottom:0.6rem; opacity:0.8; }
+.dz-label  { font-size:0.85rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+.dz-sub    { font-size:0.72rem; color:#556; margin-top:0.3rem; text-align:center; }
+.dz-fname  { display:none; font-size:0.75rem; color:var(--ok); margin-top:0.5rem; text-align:center; padding:0 1rem; word-break:break-all; }
+.drop-zone.filled .dz-fname { display:block; }
+.drop-zone.filled .dz-sub   { display:none; }
+.drop-zone.optional { opacity:0.7; }
+.drop-zone.optional:hover { opacity:1; }
+.opt-badge { position:absolute; bottom:10px; font-size:0.65rem; background:var(--border); color:var(--muted); padding:0.15rem 0.5rem; border-radius:10px; }
+.btn-start {
+  width:100%; max-width:500px; padding:1rem; font-size:1rem; font-weight:700;
+  background:var(--accent); color:var(--bg); border:none; border-radius:12px;
+  cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:0.75rem;
+}
+.btn-start:hover:not(:disabled) { background:#33ddff; transform:translateY(-1px); box-shadow:0 6px 24px rgba(0,212,255,0.3); }
+.btn-start:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; transform:none; }
+
+/* ══ PROCESSING ═══════════════════════════════════════════════════════════ */
+#screen-processing { align-items:center; justify-content:center; }
+.proc-box {
+  width:560px; background:var(--card); border:1px solid var(--border);
+  border-radius:20px; padding:2.5rem;
+}
+.proc-box h2 { font-size:1.2rem; color:var(--accent); margin-bottom:0.3rem; }
+.proc-name   { font-size:0.82rem; color:var(--muted); margin-bottom:1.5rem; }
+.steps-list  { list-style:none; margin-bottom:1.5rem; }
+.steps-list li {
+  display:flex; align-items:center; gap:0.8rem; padding:0.6rem 0;
+  border-bottom:1px solid var(--border); font-size:0.88rem;
+}
+.steps-list li:last-child { border-bottom:none; }
+.si { font-size:1rem; width:1.4rem; text-align:center; flex-shrink:0; }
+.sl { flex:1; }
+.sl.active  { color:var(--accent); font-weight:600; }
+.sl.done    { color:var(--ok); }
+.sl.pending { color:var(--muted); }
+.sl.error   { color:var(--danger); }
+.prog-track { background:var(--border); border-radius:8px; height:8px; overflow:hidden; margin-bottom:0.4rem; }
+.prog-fill  { height:100%; background:linear-gradient(90deg,var(--accent),#00ff9d); border-radius:8px; transition:width 0.5s ease; width:0%; }
+.prog-pct   { text-align:right; font-size:0.78rem; color:var(--muted); margin-bottom:1rem; }
+.log-box    {
+  background:#08081a; border:1px solid var(--border); border-radius:8px;
+  padding:0.7rem; height:150px; overflow-y:auto;
+  font-family:'Consolas','Courier New',monospace; font-size:0.7rem;
+  color:#7ab; white-space:pre-wrap; word-break:break-all;
+}
+
+/* ══ ANCHOR PLACEMENT ═════════════════════════════════════════════════════ */
+#screen-anchor { flex-direction:column; }
+.anchor-header {
+  background:var(--surface); padding:0.6rem 1.2rem; display:flex; align-items:center;
+  gap:0.8rem; border-bottom:2px solid var(--ok); flex-shrink:0;
+}
+.anchor-header .v-logo { color:var(--ok); }
+.anchor-step-badge  { background:var(--card); border:1px solid var(--border); padding:0.2rem 0.8rem; border-radius:12px; font-size:0.78rem; color:var(--muted); }
+.anchor-trans-badge { background:var(--ok); color:white; padding:0.2rem 0.8rem; border-radius:12px; font-size:0.78rem; font-weight:700; }
+.anchor-body  { flex:1; display:flex; min-height:0; }
+.anchor-panels { flex:1; display:flex; gap:2px; background:var(--border); min-width:0; }
+.anchor-panel { flex:1; display:flex; flex-direction:column; background:var(--bg); min-width:0; }
+.anchor-panel-hdr {
+  background:var(--surface); padding:0.5rem 0.8rem; font-size:0.78rem; font-weight:600;
+  color:var(--accent); text-transform:uppercase; letter-spacing:0.5px;
+  border-bottom:1px solid var(--border); flex-shrink:0;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.anchor-hint-small { font-size:0.7rem; color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0; }
+.anchor-img-wrap {
+  flex:1; position:relative; overflow:hidden; background:#111; user-select:none;
+}
+.anchor-img-wrap.crosshair { cursor:crosshair; }
+.anchor-img-wrap.grab      { cursor:grab; }
+.anchor-img-wrap.grabbing  { cursor:grabbing; }
+.anchor-img-wrap.waiting   { outline:2px solid var(--warn); outline-offset:-2px; }
+.anchor-zoom-container {
+  position:absolute; inset:0; transform-origin:0 0;
+  display:flex; align-items:center; justify-content:center;
+}
+.anchor-img { max-width:100%; max-height:100%; object-fit:contain; display:block; pointer-events:none; }
+.zoom-controls {
+  position:absolute; bottom:10px; right:10px; z-index:30;
+  display:flex; align-items:center; gap:3px;
+  background:rgba(15,15,26,0.80); border:1px solid var(--border);
+  border-radius:8px; padding:4px 6px; backdrop-filter:blur(6px);
+}
+.zoom-btn {
+  width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+  background:var(--card); border:1px solid var(--border); border-radius:5px;
+  color:var(--text); font-size:0.9rem; cursor:pointer; transition:all 0.15s; line-height:1;
+}
+.zoom-btn:hover { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+.zoom-label { font-size:0.7rem; color:var(--muted); min-width:38px; text-align:center; font-variant-numeric:tabular-nums; }
+.img-loading {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:0.6rem;
+  background:var(--bg); z-index:20; font-size:0.8rem; color:var(--muted);
+}
+.spin {
+  width:28px; height:28px; border:3px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.a-marker {
+  position:absolute; width:26px; height:26px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.65rem; font-weight:800; color:white;
+  border:2px solid rgba(255,255,255,0.9); box-shadow:0 2px 8px rgba(0,0,0,0.6);
+  transform:translate(-50%,-50%); z-index:10;
+}
+.a-marker.he    { background:var(--accent); }
+.a-marker.cosmx { background:var(--ok); }
+.a-marker.pending { background:var(--warn); animation:markerPulse 1s ease-in-out infinite; }
+.a-marker.removable { cursor:pointer; }
+.a-marker.removable:hover { filter:brightness(0.7); }
+@keyframes markerPulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(243,156,18,0.5); }
+  50%      { box-shadow:0 0 0 8px rgba(243,156,18,0); }
+}
+.anchor-sidebar { width:240px; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+.anchor-sidebar-hdr { padding:0.8rem 1rem; border-bottom:1px solid var(--border); font-size:0.72rem; text-transform:uppercase; color:var(--accent); letter-spacing:1px; }
+.anchor-list { flex:1; overflow-y:auto; padding:0.5rem; }
+.anchor-pair-item { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.6rem; background:var(--card); border:1px solid var(--border); border-radius:8px; margin-bottom:0.4rem; }
+.anchor-pair-num { width:20px; height:20px; border-radius:50%; background:var(--accent); color:var(--bg); font-weight:700; font-size:0.65rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.anchor-pair-coords { flex:1; color:var(--muted); font-size:0.68rem; line-height:1.4; }
+.anchor-pair-del { background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.9rem; padding:0.1rem 0.3rem; border-radius:4px; opacity:0.5; }
+.anchor-pair-del:hover { opacity:1; background:rgba(231,76,60,0.1); }
+.anchor-sidebar-footer { padding:0.8rem 1rem; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:0.5rem; }
+.anchor-status { font-size:0.75rem; color:var(--muted); text-align:center; padding:0.3rem; border-radius:6px; background:var(--card); }
+.anchor-status.ok   { color:var(--ok);   background:rgba(39,174,96,0.1); border:1px solid rgba(39,174,96,0.3); }
+.anchor-status.warn { color:var(--warn); background:rgba(243,156,18,0.1); border:1px solid rgba(243,156,18,0.3); }
+.anchor-clear-btn { width:100%; padding:0.4rem; background:none; border:1px solid var(--border); color:var(--muted); border-radius:6px; cursor:pointer; font-size:0.78rem; }
+.anchor-clear-btn:hover { border-color:var(--danger); color:var(--danger); }
+.anchor-confirm-btn { width:100%; padding:0.6rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-weight:700; font-size:0.88rem; cursor:pointer; transition:all 0.2s; }
+.anchor-confirm-btn:hover:not(:disabled) { background:#33ddff; transform:translateY(-1px); }
+.anchor-confirm-btn:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; transform:none; }
+
+.anchor-orient-box { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:0.55rem; margin-bottom:0.45rem; }
+.anchor-orient-title { font-size:0.68rem; color:var(--accent); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:0.45rem; }
+.anchor-orient-row { display:flex; gap:0.35rem; margin-bottom:0.35rem; }
+.anchor-orient-row:last-child { margin-bottom:0; }
+.anchor-orient-row button { flex:1; padding:0.32rem 0.25rem; font-size:0.70rem; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:5px; cursor:pointer; }
+.anchor-orient-row button:hover { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+.anchor-orient-row button.active { background:var(--ok); color:white; border-color:var(--ok); }
+.anchor-orient-note { color:var(--muted); font-size:0.66rem; line-height:1.35; margin-top:0.35rem; }
+
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:var(--surface); }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.a9s-annotation { stroke-width:2px !important; }
+
+/* ADDED: Confidence threshold styles */
+.th-scale-row { display:flex; align-items:center; justify-content:space-between; margin-top:0.3rem; }
+.th-scale-row span { font-size:0.63rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
+.th-toggle { display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.th-toggle button { padding:2px 7px; font-size:0.63rem; font-weight:700; border:none; cursor:pointer; background:transparent; color:var(--muted); font-family:inherit; }
+.th-toggle button.active { background:var(--accent); color:var(--bg); }
+#thHistWrap { position:relative; width:100%; height:72px; cursor:pointer; margin-top:0.3rem; touch-action:none; }
+#thHistWrap canvas { position:absolute; inset:0; pointer-events:auto; }
+/* Keep threshold controls clickable even when annotation drawing is active */
+#thImportInput, #thCellType, #thHistWrap, #thHistCanvas, #threshSlider,
+.th-toggle button, .th-presets button { pointer-events:auto; }
+.th-slider-row { display:flex; align-items:center; gap:5px; margin-top:0.3rem; }
+.th-slider-row span { font-size:0.68rem; color:var(--muted); white-space:nowrap; }
+.th-slider-row input[type=range] { flex:1; accent-color:var(--accent); }
+#thVal { font-size:0.7rem; font-weight:700; color:var(--accent); min-width:28px; text-align:right; }
+.th-presets { display:flex; gap:3px; margin-top:0.3rem; }
+.th-presets button { flex:1; padding:2px 0; font-size:0.61rem; cursor:pointer; background:var(--card); border:1px solid var(--border); color:var(--muted); border-radius:3px; font-family:inherit; }
+.th-presets button:hover { border-color:var(--accent); color:var(--accent); }
+.th-stats { display:grid; grid-template-columns:repeat(3,1fr); text-align:center; margin-top:0.35rem; }
+.th-stat .n { font-size:0.85rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.th-stat .l { font-size:0.57rem; text-transform:uppercase; color:var(--muted); letter-spacing:0.04em; }
+.th-stat .n.g { color:var(--ok); }
+.th-stat .n.m { color:var(--muted); }
+#thNoData { font-size:0.67rem; color:var(--muted); text-align:center; margin-top:0.2rem; }
+/* Canvas overlay for lymphocyte dots */
+#lymphOverlay { position:absolute; inset:0; pointer-events:none; }
+
+/* Freehand Lasso overlay */
+#lassoOverlay {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  z-index:60;
+  overflow:visible;
+}
+#lassoOverlay polyline {
+  fill:rgba(0,212,255,0.10);
+  stroke:#00d4ff;
+  stroke-width:2.5;
+  stroke-linejoin:round;
+  stroke-linecap:round;
+  vector-effect:non-scaling-stroke;
+}
+#viewerLeft.lasso-active,
+#viewerLeft.lasso-active * {
+  cursor:crosshair !important;
+}
+
+
+/* Photoshop-like Magic Wand preview */
+#magicWandOverlay {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  z-index:58;
+  overflow:visible;
+}
+#magicWandOverlay polygon {
+  fill:rgba(255, 230, 0, 0.18);
+  stroke:#ffd400;
+  stroke-width:2.5;
+  stroke-linejoin:round;
+  vector-effect:non-scaling-stroke;
+}
+
+#magicWandOverlay line {
+  stroke:#ffd400;
+  stroke-width:2;
+  stroke-dasharray:6 5;
+  vector-effect:non-scaling-stroke;
+}
+
+#magicWandOverlay circle {
+  fill:#ffd400;
+  stroke:#222;
+  stroke-width:1.5;
+  vector-effect:non-scaling-stroke;
+}
+
+
+/* ══ GENE EXPRESSION OVERLAY ═════════════════════════════════════════════ */
+.gene-card {
+  background:var(--card); border:1px solid var(--border); border-radius:8px;
+  padding:0.55rem;
+}
+.gene-mode-row { display:flex; gap:0.35rem; margin-bottom:0.5rem; }
+.gene-mode-btn {
+  flex:1; padding:0.38rem 0.3rem; font-size:0.70rem; background:var(--surface);
+  border:1px solid var(--border); color:var(--muted); border-radius:5px; cursor:pointer;
+}
+.gene-mode-btn.active { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:700; }
+#geneSearch {
+  width:100%; padding:0.38rem 0.45rem; font-size:0.72rem; background:var(--surface);
+  border:1px solid var(--border); color:var(--text); border-radius:5px; outline:none;
+}
+#geneSearch:disabled { opacity:0.45; cursor:not-allowed; }
+
+.gene-picker { position:relative; width:100%; }
+.gene-picker #geneSearch { padding-right:1.8rem; }
+.gene-picker-arrow {
+  position:absolute; right:2px; top:2px; bottom:2px; width:1.65rem;
+  border:0; border-left:1px solid var(--border); background:transparent;
+  color:var(--muted); cursor:pointer; border-radius:0 4px 4px 0;
+}
+.gene-picker-arrow:hover:not(:disabled) { color:var(--accent); background:rgba(0,212,255,0.06); }
+.gene-picker-arrow:disabled { opacity:0.35; cursor:not-allowed; }
+.gene-dropdown {
+  display:none; position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:2000;
+  max-height:300px; overflow-y:auto; background:#111a31; border:1px solid var(--accent);
+  border-radius:6px; box-shadow:0 8px 22px rgba(0,0,0,.45); padding:3px;
+}
+.gene-dropdown.open { display:block; }
+.gene-option {
+  padding:0.38rem 0.48rem; border-radius:4px; font-size:0.72rem; color:var(--text);
+  cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.gene-option:hover, .gene-option.active { background:var(--accent); color:var(--bg); }
+.gene-empty { padding:0.45rem; font-size:0.68rem; color:var(--muted); }
+
+.gene-gradient {
+  height:11px; margin-top:0.45rem; border-radius:999px;
+  background:linear-gradient(90deg,#2166ac 0%,#f7f7f7 50%,#b2182b 100%);
+  border:1px solid rgba(255,255,255,0.14);
+}
+.gene-scale-labels {
+  display:flex; justify-content:space-between; gap:0.25rem; margin-top:0.18rem;
+  font-size:0.59rem; color:var(--muted); font-variant-numeric:tabular-nums;
+}
+#geneStatus { margin-top:0.4rem; font-size:0.62rem; color:var(--muted); line-height:1.35; }
+#geneExpressionOverlay {
+  pointer-events:none !important;
+  display:block;
+  image-rendering:auto;
+}
+
+
+.gene-debug-box { margin-top:0.55rem; padding-top:0.5rem; border-top:1px solid var(--border); }
+.gene-debug-title { display:flex; align-items:center; justify-content:space-between; font-size:0.64rem; color:var(--accent); font-weight:700; margin-bottom:0.4rem; }
+.gene-debug-row { display:flex; align-items:center; gap:0.4rem; margin-top:0.35rem; font-size:0.62rem; color:var(--muted); }
+.gene-debug-row label { flex:1; }
+.gene-debug-row input[type=range] { width:92px; }
+.gene-debug-checks { display:grid; grid-template-columns:1fr 1fr; gap:0.3rem 0.45rem; margin-top:0.45rem; }
+.gene-debug-checks label { display:flex; align-items:center; gap:0.3rem; font-size:0.61rem; color:var(--muted); }
+.gene-debug-info { margin-top:0.45rem; padding:0.4rem; background:rgba(0,0,0,0.18); border:1px solid var(--border); border-radius:5px; font-size:0.60rem; line-height:1.4; color:var(--muted); word-break:break-word; }
+.gene-debug-info strong { color:var(--text); font-weight:600; }
+
+.gene-align-grid{display:grid;grid-template-columns:1fr 74px;gap:.32rem .4rem;align-items:center;margin-top:.5rem}
+.gene-align-grid label{font-size:.61rem;color:var(--muted)}
+.gene-align-grid input{width:74px;padding:.28rem .35rem;font-size:.65rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px}
+.gene-nudge-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.28rem;margin-top:.45rem}
+.gene-nudge-grid button,.gene-align-actions button{padding:.28rem;font-size:.63rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer}
+.gene-align-actions{display:flex;gap:.35rem;margin-top:.45rem}.gene-align-actions button{flex:1}
+</style>
+</head>
+<body>
+
+<!-- ══ SCREEN: VIEWER ══════════════════════════════════════════════════════ -->
+<div id="screen-viewer" class="screen active">
+  <div class="v-header">
+    <span class="v-logo">PATHOGENE</span><span class="slide-chip" title="Lightweight Flask demo using pre-generated tiles">DEMO</span>
+    <select id="slideSelect" onchange="onSlideChange(this.value)"><option value="">Select slide...</option></select>
+    <span class="slide-chip" id="viewerSlideChip">—</span>
+    <div class="hactions">
+      <button class="hbtn window-on" id="btnCosMx" onclick="toggleCosMx()" title="Show or hide the right comparison window">Window: ON</button>
+      <button class="hbtn on" id="btnSync" onclick="toggleSync()">Sync: ON</button>
+      <button class="hbtn" onclick="resyncPanels()">Re-sync</button>
+      <button class="hbtn on" id="btnRightBase" onclick="toggleRightBase()" title="Switch the right comparison window between registered CosMx and original H&amp;E">Right: CosMx</button>
+      <!-- ADDED: logo.png — 타일 서버를 통해 서빙 (exe 빌드 시에도 동작) -->
+      <img src="./logo.png" alt="Cell type legend" style="height:44px;width:auto;object-fit:contain;flex-shrink:0;margin-left:0.3rem;">
+    </div>
+  </div>
+  <div class="v-body">
+    <div class="side-panel" id="sidePanel">
+      <div class="cg">
+        <h4>Sample QC</h4>
+        <div class="crow">
+          <button class="sbtn on"     onclick="setQC('approved')">Approve</button>
+          <button class="sbtn danger" onclick="setQC('rejected')">Reject</button>
+        </div>
+        <div class="qc-badge" id="qcBadge">Unreviewed</div>
+      </div>
+      <div class="cg">
+        <h4>Annotation Key</h4>
+        <div class="legend-row"><div class="cbox" style="background:rgba(231,76,60,.5);border:2px solid #e74c3c"></div>Tumor</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(46,204,113,.5);border:2px solid #2ecc71"></div>Stroma</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(155,89,182,.5);border:2px solid #9b59b6"></div>Other / In-situ</div>
+        <div class="legend-row"><div class="cbox" style="background:rgba(0,255,255,.3);border:2px solid #0ff"></div>Lymphocyte</div>
+      </div>
+
+      <div class="cg" id="geneExpressionPanel">
+        <h4>CosMx Cell Overlay</h4>
+        <div class="gene-card">
+          <div class="gene-mode-row">
+            <button class="gene-mode-btn active" id="geneModeCellType" onclick="setGeneOverlayMode('cell-type')">Cell Type</button>
+            <button class="gene-mode-btn" id="geneModeExpression" onclick="setGeneOverlayMode('gene')">Gene Expression</button>
+          </div>
+          <div style="font-size:0.64rem;color:var(--muted);margin-bottom:0.22rem;">Gene</div>
+          <div class="gene-picker" id="genePicker">
+            <input id="geneSearch" type="text" placeholder="Search gene..." autocomplete="off" disabled
+                   onfocus="openGeneDropdown()"
+                   oninput="filterGeneDropdown(this.value)"
+                   onkeydown="handleGeneSearchKey(event)">
+            <button class="gene-picker-arrow" type="button" id="genePickerArrow" disabled
+                    onclick="toggleGeneDropdown(event)" aria-label="Open gene list">▾</button>
+            <div class="gene-dropdown" id="geneDropdown"></div>
+          </div>
+          <div id="geneRenderInfo" style="font-size:0.58rem;color:var(--muted);margin-top:0.25rem;">Hybrid rendering enabled: fast 4096px overview + sharp deep-zoom refresh.</div>
+          <div id="geneCatalogInfo" style="font-size:0.58rem;color:var(--muted);margin-top:0.25rem;">
+            Gene list will appear after the data load.
+          </div>
+          <div class="gene-gradient"></div>
+          <div class="gene-scale-labels">
+            <span id="geneLowLabel">Low</span>
+            <span id="geneMidLabel">Mid</span>
+            <span id="geneHighLabel">High</span>
+          </div>
+          <div id="geneStatus">Available for slides with gene-expression data.</div>
+          <div class="gene-debug-box">
+            <div class="gene-debug-title">
+              <span>Alignment Debug</span>
+              <button class="gene-mode-btn" id="geneDebugToggle" style="flex:0 0 auto;padding:0.25rem 0.45rem;" onclick="toggleGeneDebug()">OFF</button>
+            </div>
+            <div id="geneDebugControls" style="display:none;">
+              <div class="gene-debug-row">
+                <label for="geneOpacity">Overlay opacity <span id="geneOpacityVal">58%</span></label>
+                <input id="geneOpacity" type="range" min="0" max="100" value="58" oninput="setGeneOverlayOpacity(this.value)">
+              </div>
+              <div class="gene-debug-checks">
+                <label><input id="geneDbgFill" type="checkbox" checked onchange="setGeneDebugOption('fill',this.checked)"> Fill</label>
+                <label><input id="geneDbgOutline" type="checkbox" onchange="setGeneDebugOption('outline',this.checked)"> Outline</label>
+                <label><input id="geneDbgCentroid" type="checkbox" onchange="setGeneDebugOption('centroids',this.checked)"> Centroids</label>
+                <label><input id="geneDbgIds" type="checkbox" checked onchange="setGeneDebugOption('label',this.checked)"> Selected ID</label>
+              </div>
+              <div style="margin-top:.55rem;padding-top:.5rem;border-top:1px solid var(--border)">
+<div style="font-size:.63rem;color:var(--accent);font-weight:700">Manual Overlay Alignment</div>
+<div class="gene-align-grid">
+<label>X offset (H&amp;E px)</label><input id="geneOffsetX" type="number" step="1" value="0" onchange="setGeneOverlayOffset('x',this.value)">
+<label>Y offset (H&amp;E px)</label><input id="geneOffsetY" type="number" step="1" value="0" onchange="setGeneOverlayOffset('y',this.value)">
+</div>
+<div style="font-size:.58rem;color:var(--muted);margin-top:.35rem">Positive X = right, positive Y = down</div>
+<div class="gene-nudge-grid"><span></span><button onclick="nudgeGeneOverlay(0,-10)">↑ 10</button><span></span>
+<button onclick="nudgeGeneOverlay(-10,0)">← 10</button><button onclick="nudgeGeneOverlay(0,0,true)">0</button><button onclick="nudgeGeneOverlay(10,0)">10 →</button>
+<span></span><button onclick="nudgeGeneOverlay(0,10)">↓ 10</button><span></span></div>
+<div class="gene-align-actions"><button onclick="saveGeneOverlayAlignment()">Save XY</button><button onclick="resetGeneOverlayAlignment()">Reset</button></div>
+</div><div class="gene-debug-info" id="geneDebugInfo">Click a cell in the right viewer to inspect its nearest polygon.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADDED: Draw Annotation (polygon) -->
+      <div class="cg">
+        <h4>Draw Annotation</h4>
+        <div class="crow">
+          <button class="sbtn" id="btnDrawLabel-tumor"  data-label="tumor"  onclick="setDrawLabel('tumor')">Tumor</button>
+          <button class="sbtn" id="btnDrawLabel-stroma" data-label="stroma" onclick="setDrawLabel('stroma')">Stroma</button>
+        </div>
+        <div class="crow" style="margin-top:0.4rem;">
+          <button class="sbtn" id="btnDrawLabel-other"      data-label="other"      onclick="setDrawLabel('other')">Other</button>
+          <button class="sbtn" id="btnDrawLabel-lymphocyte" data-label="lymphocyte" onclick="setDrawLabel('lymphocyte')">Lymphocyte</button>
+        </div>
+        <button class="sbtn" id="btnDrawPolygon" style="margin-top:0.6rem;width:100%;" onclick="toggleDrawPolygon()">Draw Polygon</button>
+        <button class="sbtn" id="btnLasso" style="margin-top:0.4rem;width:100%;" onclick="toggleLassoMode()">Freehand Lasso</button>
+        <div id="lassoHint" style="font-size:0.66rem;color:var(--muted);margin-top:0.25rem;line-height:1.35;">
+          Select a class, enable Freehand Lasso, then drag around the region and release to create a polygon.
+        </div>
+
+        <!-- Magic Wand: press-drag controls selection strength -->
+        <div class="crow" style="margin-top:0.4rem;">
+          <button class="sbtn" id="btnMagicWand" onclick="toggleMagicWand()">Magic Wand</button>
+          <button class="sbtn" id="btnApplyMagicWand" onclick="applyMagicWandSelection()" disabled>Apply Wand</button>
+        </div>
+        <div class="crow">
+          <button class="sbtn" id="btnCancelMagicWand" onclick="cancelMagicWandSelection()" disabled>Cancel Wand</button>
+          <button class="sbtn" id="btnUndoMagicWand" onclick="undoLastMagicWand()" disabled>Undo Wand</button>
+        </div>
+        <div class="sw" id="magicWandOptions" style="margin-top:0.45rem;">
+          <div id="magicWandStrength"
+               style="font-size:0.68rem;color:var(--accent);font-weight:700;margin-bottom:0.25rem;">
+            Selection strength: —
+          </div>
+          <div id="magicWandHint" style="font-size:0.65rem;color:var(--muted);margin-top:0.25rem;line-height:1.35;">
+            Select a class, enable Magic Wand, then press inside tissue and drag. A longer drag expands the color-selection range. Release to preview, then Apply Wand.
+          </div>
+        </div>
+
+        <input type="file" id="aiAnnoImportInput" accept=".json,.geojson" style="display:none" onchange="onImportFile(this)">
+        <button class="sbtn" id="btnImportAIAnnotations" style="margin-top:0.5rem;width:100%;font-weight:700;"
+                onclick="document.getElementById('aiAnnoImportInput').click()">Import AI GeoJSON</button>
+
+        <div id="aiEditHint" style="font-size:0.65rem;color:var(--muted);margin-top:0.35rem;line-height:1.4;">
+          After import, click a polygon to select it and drag its vertex handles to correct the shape.
+          To change its class, select Tumor/Stroma/Other/Lymphocyte above and click Apply Class.
+        </div>
+
+        <button class="sbtn" id="btnApplySelectedClass" style="margin-top:0.4rem;width:100%;"
+                onclick="applyClassToSelectedAnnotation()">Apply Class to Selected</button>
+        <button class="sbtn danger" id="btnDeleteSelected" style="margin-top:0.4rem;width:100%;"
+                onclick="deleteSelectedAnnotation()">Delete Selected</button>
+
+        <div id="aiRevisionStats"
+             style="margin-top:0.5rem;padding:0.45rem;background:var(--card);border:1px solid var(--border);
+                    border-radius:5px;font-size:0.65rem;color:var(--muted);line-height:1.4;">
+          AI GeoJSON: not loaded
+        </div>
+
+        <button class="sbtn" id="btnSaveAnnotations" style="margin-top:0.45rem;width:100%;font-weight:700;"
+                onclick="saveAnnotationsGeoJSON()">Export Corrected GeoJSON</button>
+        <button class="sbtn" id="btnClearImported" style="margin-top:0.4rem;width:100%;"
+                onclick="clearImportedAnnotations()">Clear Imported AI</button>
+      </div>
+      <!-- END ADDED -->
+
+      <!-- ADDED: Segmentation GT-coverage evaluation -->
+      <div class="cg" id="segEvalPanel">
+        <h4>Segmentation Evaluation</h4>
+        <input type="file" id="gtSegInput" accept=".json,.geojson" style="display:none" onchange="loadSegmentationEvalFile(this, 'gt')">
+        <button class="sbtn" style="width:100%;margin-bottom:0.35rem;" onclick="document.getElementById('gtSegInput').click()">Load Pathologist GT</button>
+        <div id="gtSegName" style="font-size:0.68rem;color:var(--muted);margin-bottom:0.55rem;word-break:break-word;">GT: not loaded</div>
+
+        <input type="file" id="predSegInput" accept=".json,.geojson" style="display:none" onchange="loadSegmentationEvalFile(this, 'pred')">
+        <button class="sbtn" style="width:100%;margin-bottom:0.35rem;" onclick="document.getElementById('predSegInput').click()">Load AI Segmentation</button>
+        <div id="predSegName" style="font-size:0.68rem;color:var(--muted);margin-bottom:0.55rem;word-break:break-word;">AI: not loaded</div>
+
+        <button class="sbtn" id="btnSegEvaluate" style="width:100%;font-weight:700;" onclick="evaluateSegmentation()" disabled>Calculate GT Coverage</button>
+        <div id="segEvalResults" style="display:none;margin-top:0.65rem;padding:0.55rem;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:0.72rem;line-height:1.55;"></div>
+      </div>
+      <!-- END ADDED -->
+
+      <!-- ADDED: Confidence Threshold section -->
+      <div class="cg">
+        <h4>AI Lymphocyte Threshold</h4>
+        <input type="file" id="thImportInput" accept=".json,.geojson" style="display:none">
+        <button class="sbtn" style="width:100%;margin-bottom:0.4rem;"
+                onclick="document.getElementById('thImportInput').click()">
+          Import Lymphocyte GeoJSON
+        </button>
+        <button class="sbtn danger" style="width:100%;margin-bottom:0.4rem;"
+                onclick="clearLymphocyteOverlay()">
+          Clear Lymphocyte Overlay
+        </button>
+        <select id="thCellType" disabled
+                style="width:100%;padding:4px 6px;font-size:0.74rem;background:var(--card);
+                       border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;">
+          <option>Import to begin...</option>
+        </select>
+        <div class="th-scale-row">
+          <span>Score Distribution</span>
+          <div class="th-toggle">
+            <button id="thBtnLin" class="active" onclick="thSetScale('lin')">LIN</button>
+            <button id="thBtnLog"               onclick="thSetScale('log')">LOG</button>
+          </div>
+        </div>
+        <div id="thHistWrap">
+          <canvas id="thHistCanvas" role="img" aria-label="Confidence score distribution. Click bar to set threshold."></canvas>
+        </div>
+        <div class="th-slider-row">
+          <span>Threshold</span>
+          <input type="range" id="threshSlider" min="0" max="100" value="10" step="1"
+                 oninput="thApply(this.value/100)">
+          <span id="thVal">0.10</span>
+        </div>
+        <div class="th-presets">
+          <button onclick="thSetPreset(0.06)">0.06</button>
+          <button onclick="thSetPreset(0.10)">0.10</button>
+          <button onclick="thSetPreset(0.15)">0.15</button>
+          <button onclick="thSetPreset(0.25)">0.25</button>
+        </div>
+        <div class="th-stats">
+          <div class="th-stat"><div class="n g" id="thN">—</div><div class="l">Displayed</div></div>
+          <div class="th-stat"><div class="n"   id="thTot">—</div><div class="l">Of Total</div></div>
+          <div class="th-stat"><div class="n m" id="thH">—</div><div class="l">Hidden</div></div>
+        </div>
+        <div id="thNoData">No data loaded</div>
+      </div>
+      <!-- END ADDED -->
+
+      <button class="sbtn" style="width:100%;margin-top:0.5rem;" onclick="toggleSidePanel()">Collapse</button>
+    </div>
+    <button id="expandBtn" onclick="toggleSidePanel()">Panel</button>
+    <div id="viewerArea" style="flex:1;display:flex;min-width:0;">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">&#128300;</div>
+        <p>No demo slides found. Add pre-generated DZI data under <code>data/tiles</code>.</p>
+      </div>
+      <div class="panels-wrap" id="panelsWrap" style="display:none;">
+        <div class="vp">
+          <div class="vp-hdr">H&amp;E + Annotations</div>
+          <div class="vp-body">
+            <div id="viewerLeft"></div>
+            <svg id="lassoOverlay" aria-hidden="true"></svg>
+            <svg id="magicWandOverlay" aria-hidden="true"></svg>
+            <!-- ADDED: canvas overlay for lymphocyte dots -->
+            <canvas id="lymphOverlay"></canvas>
+          </div>
+        </div>
+        <div class="vp" id="cosmxPanel">
+          <div class="vp-hdr" id="rightViewerHdr">Spatial Transcriptomics (CosMx)</div>
+          <div class="vp-body">
+            <div id="viewerRight"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div><span class="sdot"></span><span id="statusText">Ready</span></div>
+    <div>Annotations: <span class="anno-count" id="annoCount">0</span></div>
+    <div id="syncStatus">Following H&E movement only</div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: REGISTER ════════════════════════════════════════════════════ -->
+<div id="screen-register" class="screen">
+  <div class="reg-header">
+    <span class="v-logo">PATHOGENE</span>
+    <span style="color:var(--warn);font-size:0.85rem;font-weight:600;">Registration</span>
+    <button class="reg-back" onclick="goViewer()" style="margin-left:auto;">Back to Viewer</button>
+  </div>
+  <div class="reg-box" style="margin-top:5rem;">
+    <div class="reg-title">Register New Slide</div>
+    <div class="reg-sub">Select local file paths, preview the slide, then start the pipeline.</div>
+
+    <!-- Step 1: File selection -->
+    <div class="drop-row">
+      <div class="drop-zone" id="dzHE" onclick="selectHE()" ondragover="onDragOver(event,'dzHE')" ondragleave="onDragLeave('dzHE')" ondrop="onDrop(event,'he')">
+        <span class="dz-check">&#10003;</span>
+        <div class="dz-icon">&#128300;</div>
+        <div class="dz-label">H&amp;E Slide</div>
+        <div class="dz-sub">Click to browse<br>.svs / .tif / .tiff</div>
+        <div class="dz-fname" id="heName"></div>
+      </div>
+      <div class="drop-zone optional" id="dzCosMx" onclick="selectCosMx()" ondragover="onDragOver(event,'dzCosMx')" ondragleave="onDragLeave('dzCosMx')" ondrop="onDrop(event,'cosmx')">
+        <span class="dz-check">&#10003;</span>
+        <div class="dz-icon">&#129516;</div>
+        <div class="dz-label">CosMx Image</div>
+        <div class="dz-sub">Click to browse<br>.ome.tif / .tif / .tiff / .png</div>
+        <div class="dz-fname" id="cosmxName"></div>
+        <div class="opt-badge">Optional</div>
+      </div>
+    </div>
+
+    <!-- Step 2: Preview button -->
+    <button class="btn-start" id="btnPreview" onclick="generatePreview()" disabled
+            style="background:var(--warn);border-color:var(--warn);">
+      <span>&#128300;</span> Preview Slide
+    </button>
+    <div id="previewStatus" style="margin-top:0.6rem;font-size:0.8rem;color:var(--muted);min-height:1.2rem;"></div>
+
+    <!-- Step 3: Preview images (hidden until generated) -->
+    <div id="previewSection" style="display:none;margin-top:1.2rem;max-width:600px;width:100%;">
+      <div style="display:flex;gap:1rem;justify-content:center;margin-bottom:1rem;">
+        <div style="flex:1;text-align:center;">
+          <div style="font-size:0.68rem;text-transform:uppercase;color:var(--accent);letter-spacing:1px;margin-bottom:0.4rem;">H&amp;E Slide</div>
+          <img id="previewHEImg" src="" alt="H&E preview"
+               style="width:100%;max-height:220px;object-fit:contain;border:1px solid var(--border);border-radius:8px;background:#111;">
+          <div id="previewHEInfo" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem;"></div>
+        </div>
+        <div id="previewCosMxCol" style="flex:1;text-align:center;display:none;">
+          <div style="font-size:0.68rem;text-transform:uppercase;color:var(--ok);letter-spacing:1px;margin-bottom:0.4rem;">CosMx</div>
+          <img id="previewCosMxImg" src="" alt="CosMx preview"
+               style="width:100%;max-height:220px;object-fit:contain;border:1px solid var(--border);border-radius:8px;background:#111;">
+          <div id="previewCosMxInfo" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem;"></div>
+        </div>
+      </div>
+
+      <!-- Step 4: Settings + Start (visible only after preview) -->
+      <div class="reg-options">
+        <div class="reg-options-label">Transform Type</div>
+        <div class="seg-control" id="segTransform">
+          <button class="seg-btn" onclick="setTransformType('rigid')">Rigid Body<br><small style="font-weight:400;opacity:0.7">rotation + translation</small></button>
+          <button class="seg-btn active"        onclick="setTransformType('affine')">Affine<br><small style="font-weight:400;opacity:0.7">+ scale + shear</small></button>
+        </div>
+      </div>
+      <div class="reg-options">
+        <div class="reg-options-label">Registration Mode</div>
+        <div class="seg-control" id="segMode">
+          <button class="seg-btn active" onclick="setMode('auto')">Automatic<br><small style="font-weight:400;opacity:0.7">SIFT feature matching</small></button>
+          <button class="seg-btn" onclick="setMode('semi-auto')">Semi-automatic<br><small style="font-weight:400;opacity:0.7">Manual anchor placement</small></button>
+          <button class="seg-btn" onclick="setMode('tiling-only')">Already Registered<br><small style="font-weight:400;opacity:0.7">Skip registration &amp; tile only</small></button>
+        </div>
+      </div>
+      <button class="btn-start" id="btnStart" onclick="startPipeline()">
+        <span>&#9654;</span> Start Pipeline
+      </button>
+    </div>
+
+    <div id="pathDebug" style="margin-top:1rem;font-size:0.72rem;color:var(--muted);text-align:left;max-width:500px;word-break:break-all;display:none;">
+      <div>SVS: <span id="dbgSVS" style="color:var(--accent);"></span></div>
+      <div>CosMx: <span id="dbgCosMx" style="color:var(--accent);">—</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: PROCESSING ══════════════════════════════════════════════════ -->
+<div id="screen-processing" class="screen">
+  <div class="proc-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem;">
+      <h2>Processing</h2>
+      <button id="procBackBtn" onclick="goRegister()"
+              style="padding:0.3rem 0.8rem;font-size:0.75rem;background:var(--card);
+                     border:1px solid var(--border);color:var(--muted);border-radius:6px;
+                     cursor:pointer;display:none;">Back</button>
+    </div>
+    <div class="proc-name" id="procSlideName"></div>
+    <ul class="steps-list" id="stepsList"></ul>
+    <div class="prog-track"><div class="prog-fill" id="procFill"></div></div>
+    <div class="prog-pct"   id="procPct">0 / 0</div>
+    <div class="log-box"    id="procLog"></div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: REGISTRATION PREVIEW ══════════════════════════════════════ -->
+<div id="screen-preview" class="screen" style="align-items:center;justify-content:center;
+     background:radial-gradient(ellipse at 50% 30%,#1a2a4a 0%,var(--bg) 70%);">
+  <div style="width:840px;max-width:96vw;">
+    <div style="text-align:center;margin-bottom:1rem;">
+      <h2 style="font-size:1.3rem;color:var(--accent);">Registration Preview</h2>
+      <p style="font-size:0.85rem;color:var(--muted);margin-top:0.3rem;">
+        Does the CosMx overlay align well with the H&amp;E? Use the opacity slider to check.
+      </p>
+    </div>
+
+    <!-- Preview canvas area -->
+    <div style="position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden;
+                border:1px solid var(--border);margin-bottom:1rem;" id="previewCanvasWrap">
+      <canvas id="previewCanvas" style="display:block;width:100%;cursor:crosshair;"></canvas>
+      <!-- CosMx opacity slider overlay -->
+      <div style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+                  background:rgba(10,20,40,0.85);border:1px solid var(--border);
+                  border-radius:8px;padding:6px 14px;display:flex;align-items:center;gap:10px;
+                  backdrop-filter:blur(6px);">
+        <span style="font-size:0.72rem;color:var(--muted);white-space:nowrap;">CosMx opacity</span>
+        <input type="range" id="previewOpacity" min="0" max="100" value="50"
+               style="width:120px;accent-color:var(--accent);"
+               oninput="renderPreviewCanvas()">
+        <span style="font-size:0.72rem;color:var(--accent);min-width:28px;" id="previewOpacityVal">50%</span>
+      </div>
+    </div>
+
+    <!-- Transform info -->
+    <div id="previewTransformInfo" style="text-align:center;font-size:0.78rem;color:var(--muted);
+         margin-bottom:1.2rem;"></div>
+
+    <!-- Decision buttons -->
+    <div style="display:flex;gap:0.8rem;">
+      <button onclick="confirmPreview('approve')"
+              style="flex:1;padding:0.9rem;font-size:0.95rem;font-weight:700;
+                     background:var(--ok);color:white;border:none;border-radius:10px;
+                     cursor:pointer;transition:all 0.2s;"
+              onmouseover="this.style.background='#2ecc71'"
+              onmouseout="this.style.background='var(--ok)'">
+        &#10003;&nbsp; Looks good — Start full tiling
+      </button>
+      <button onclick="confirmPreview('anchors')"
+              style="flex:1;padding:0.9rem;font-size:0.95rem;font-weight:700;
+                     background:var(--warn);color:var(--bg);border:none;border-radius:10px;
+                     cursor:pointer;transition:all 0.2s;"
+              onmouseover="this.style.background='#f1c40f'"
+              onmouseout="this.style.background='var(--warn)'">
+        &#9881;&nbsp; Adjust with anchor placement
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: ANCHOR PLACEMENT ══════════════════════════════════════════ -->
+<div id="screen-anchor" class="screen">
+  <div class="anchor-header">
+    <span class="v-logo">PATHOGENE</span>
+    <span class="anchor-trans-badge" id="anchorTransBadge">Rigid Body</span>
+    <span class="anchor-step-badge"  id="anchorStepBadge">Step 2</span>
+    <span style="color:var(--ok);font-size:0.85rem;font-weight:600;margin-left:0.3rem;">Anchor Placement</span>
+    <span style="margin-left:auto;font-size:0.72rem;color:var(--muted);">
+      Scroll: zoom &nbsp;|&nbsp; Drag: pan &nbsp;|&nbsp; Click: place anchor
+    </span>
+    <button class="reg-back" onclick="cancelAnchors()" style="margin-left:0.8rem;border-color:var(--danger);">Cancel</button>
+  </div>
+  <div class="anchor-body">
+    <div class="anchor-panels">
+      <div class="anchor-panel">
+        <div class="anchor-panel-hdr">
+          H&amp;E SLIDE
+          <span class="anchor-hint-small" id="heFilename" style="color:var(--accent);font-size:0.68rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          <span class="anchor-hint-small" id="heHint">Click to place anchor</span>
+        </div>
+        <div class="anchor-img-wrap crosshair" id="heImgWrap">
+          <div class="img-loading" id="heLoading"><div class="spin"></div>Loading H&amp;E...</div>
+          <div class="anchor-zoom-container" id="heZoom">
+            <img class="anchor-img" id="heThumb" src="" alt="" draggable="false"
+                 style="display:none" onload="onImgLoad('he')" onerror="onImgError('he')">
+          </div>
+          <div class="zoom-controls">
+            <button class="zoom-btn" onclick="zoomOut('he')" title="Zoom out">−</button>
+            <span   class="zoom-label" id="heZoomLabel">100%</span>
+            <button class="zoom-btn" onclick="zoomIn('he')" title="Zoom in">+</button>
+            <button class="zoom-btn" onclick="zoomReset('he')" title="Reset">&#8635;</button>
+          </div>
+        </div>
+      </div>
+      <div class="anchor-panel">
+        <div class="anchor-panel-hdr">
+          COSMX IMAGE
+          <span class="anchor-hint-small" id="cosmxFilename" style="color:var(--ok);font-size:0.68rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          <span class="anchor-hint-small" id="cosmxHint">Click H&amp;E first</span>
+        </div>
+        <div class="anchor-img-wrap" id="cosmxImgWrap">
+          <div class="img-loading" id="cosmxLoading"><div class="spin"></div>Loading CosMx...</div>
+          <div class="anchor-zoom-container" id="cosmxZoom">
+            <img class="anchor-img" id="cosmxThumb" src="" alt="" draggable="false"
+                 style="display:none" onload="onImgLoad('cosmx')" onerror="onImgError('cosmx')">
+          </div>
+          <div class="zoom-controls">
+            <button class="zoom-btn" onclick="zoomOut('cosmx')" title="Zoom out">−</button>
+            <span   class="zoom-label" id="cosmxZoomLabel">100%</span>
+            <button class="zoom-btn" onclick="zoomIn('cosmx')" title="Zoom in">+</button>
+            <button class="zoom-btn" onclick="zoomReset('cosmx')" title="Reset">&#8635;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="anchor-sidebar">
+      <div class="anchor-sidebar-hdr">Anchor Pairs</div>
+      <div class="anchor-list" id="anchorList">
+        <div id="anchorEmpty" style="padding:1rem;text-align:center;color:var(--muted);font-size:0.8rem;">
+          No anchors yet.<br>Click on H&amp;E to start.
+        </div>
+      </div>
+      <div class="anchor-sidebar-footer">
+        <div class="anchor-orient-box">
+          <div class="anchor-orient-title">CosMx Orientation Before Anchors</div>
+          <div class="anchor-orient-row">
+            <button id="anchorRot0" class="active" onclick="setAnchorCosMxRotation(0)">0°</button>
+            <button id="anchorRot90" onclick="setAnchorCosMxRotation(90)">90°</button>
+            <button id="anchorRot180" onclick="setAnchorCosMxRotation(180)">180°</button>
+            <button id="anchorRot270" onclick="setAnchorCosMxRotation(270)">270°</button>
+          </div>
+          <div class="anchor-orient-row">
+            <button id="anchorFlipX" onclick="toggleAnchorCosMxFlip('x')">Flip X</button>
+            <button id="anchorFlipY" onclick="toggleAnchorCosMxFlip('y')">Flip Y</button>
+          </div>
+          <div class="anchor-orient-note" id="anchorOrientNote">Rotate/flip CosMx first, then place anchors.</div>
+        </div>
+        <div class="anchor-status warn" id="anchorStatus">0 pairs — need at least 4</div>
+        <button class="anchor-clear-btn" onclick="clearAnchors()">Clear All</button>
+        <button class="anchor-confirm-btn" id="anchorConfirmBtn" onclick="confirmAnchors()" disabled>
+          Confirm &amp; Register
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<script src="./viewer.js"></script>
+
+<script>
+function onImgError(which) {
+  try {
+    const id = which === 'cosmx' ? 'cosmxThumb' : 'heThumb';
+    const img = document.getElementById(id);
+    if (!img) return;
+    img.onerror = null;
+    img.style.display = 'none';
+  } catch (e) {
+    console.warn('[UI] image fallback failed:', e);
+  }
+}
+</script>
+
+</body>
+</html>
